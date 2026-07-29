@@ -70,6 +70,15 @@ Versions are stamped by `scripts/install.sh` at the install prefix
 - pytest `requires_cryptography` marker registered (was previously
   causing collection errors with `--strict-markers`).
 
+### Added
+
+- **Responsive dashboard** — `rollout_shield/interface/style.css` now
+  carries three `@media` breakpoints (≤1024 / ≤768 / ≤480 px). Tables
+  in both `index.html` and `ai-assistance.html` are wrapped in
+  `<div class="table-scroll">` so they scroll horizontally on narrow
+  viewports. Nav tabs wrap to two rows on tablet, single-line flex on
+  phone. The AI prompt row stacks vertically below 768 px.
+
 ## [0.1.0] — 2026-07-29
 
 Initial public release of the rollout-shield runtime.

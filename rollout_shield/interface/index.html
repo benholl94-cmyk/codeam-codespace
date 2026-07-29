@@ -56,45 +56,45 @@
 
     <section id="tab-claims" class="tab-pane">
       <h2>Recent claims</h2>
-      <table id="claims-table">
+      <div class="table-scroll"><table id="claims-table">
         <thead>
           <tr>
             <th>id</th><th>type</th><th>agent</th><th>ts</th><th>parent</th><th>signature</th>
           </tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="tab-alerts" class="tab-pane">
       <h2>Recent alerts</h2>
-      <table id="alerts-table">
+      <div class="table-scroll"><table id="alerts-table">
         <thead>
           <tr><th>id</th><th>severity</th><th>source</th><th>message</th><th>ts</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="tab-reputation" class="tab-pane">
       <h2>Agent reputation leaderboard</h2>
-      <table id="reputation-table">
+      <div class="table-scroll"><table id="reputation-table">
         <thead>
           <tr><th>agent_id</th><th>score</th><th>events</th><th>last_event_ts</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="tab-keys" class="tab-pane">
       <h2>Registered keys</h2>
       <p class="muted">Private key material is never exposed via the API.</p>
-      <table id="keys-table">
+      <div class="table-scroll"><table id="keys-table">
         <thead>
           <tr><th>id</th><th>agent_id</th><th>algorithm</th><th>fingerprint</th><th>created_at</th><th>hardware_anchored</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>
 
     <section id="tab-webhooks" class="tab-pane">
@@ -113,29 +113,29 @@
       </div>
 
       <h3>Targets</h3>
-      <table id="webhook-targets-table">
+      <div class="table-scroll"><table id="webhook-targets-table">
         <thead>
           <tr><th>name</th><th>url</th><th>sign_mode</th><th>enabled</th><th>paused</th><th>fail_streak</th><th>max_attempts</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
 
       <h3>Deliveries</h3>
-      <table id="webhook-deliveries-table">
+      <div class="table-scroll"><table id="webhook-deliveries-table">
         <thead>
           <tr><th>delivery_id</th><th>target</th><th>status</th><th>attempts</th><th>updated</th><th>last_error</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
 
       <h3>DLQ</h3>
       <p class="muted">Deliveries that exhausted retries. Replay from the CLI: <code>rollout-shield webhooks replay-all --status dlq</code></p>
-      <table id="webhook-dlq-table">
+      <div class="table-scroll"><table id="webhook-dlq-table">
         <thead>
           <tr><th>delivery_id</th><th>target</th><th>attempts</th><th>last_error</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>
   </main>
 

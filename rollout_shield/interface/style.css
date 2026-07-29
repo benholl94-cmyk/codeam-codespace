@@ -260,3 +260,81 @@ footer button {
 }
 
 footer button:hover { background: var(--panel); }
+
+/* ============================================================
+   RESPONSIVE BREAKPOINTS — phone ≤480, tablet ≤768, small desktop ≤1024
+   ============================================================ */
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.table-scroll > table {
+  border: none;
+  border-radius: 0;
+  margin: 0;
+}
+
+/* ≤ 1024 — small desktop / large tablet ---------------------------- */
+@media (max-width: 1024px) {
+  header, main, footer { padding-left: 16px; padding-right: 16px; }
+  nav.tabs { padding-left: 16px; padding-right: 16px; }
+  .grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+}
+
+/* ≤ 768 — tablet portrait ------------------------------------------ */
+@media (max-width: 768px) {
+  header h1 { font-size: 20px; }
+  header .meta { flex-wrap: wrap; gap: 6px; }
+  nav.tabs {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 2px;
+  }
+  nav.tabs button {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  nav.tabs a.tab-link {
+    margin-left: 0;
+    margin-top: 4px;
+  }
+  main { padding: 12px 16px; }
+  .grid { gap: 8px; }
+  .card .big-number { font-size: 22px; }
+  footer {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+  }
+}
+
+/* ≤ 480 — phone --------------------------------------------------- */
+@media (max-width: 480px) {
+  html, body { font-size: 13px; }
+  header { padding: 12px 14px 8px; }
+  header h1 { font-size: 18px; }
+  header .tagline { font-size: 12px; }
+  nav.tabs button {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  nav.tabs a.tab-link {
+    font-size: 11px;
+    padding: 3px 8px;
+    margin-top: 6px;
+  }
+  main { padding: 10px 12px; }
+  .grid { grid-template-columns: 1fr; gap: 8px; }
+  .card { padding: 10px 12px; }
+  .card .big-number { font-size: 20px; }
+  h2 { font-size: 15px; margin: 10px 0 10px 0; }
+  table { font-size: 11px; }
+  th, td { padding: 4px 6px; }
+  th { font-size: 9px; }
+  .pill { padding: 2px 8px; font-size: 10px; }
+}

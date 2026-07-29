@@ -60,6 +60,16 @@
       color: var(--accent);
       margin-right: 4px;
     }
+
+    /* responsive — prompt row stacks on tablet/narrow screens */
+    @media (max-width: 768px) {
+      .ai-prompt { flex-wrap: wrap; }
+      .ai-prompt input[type="text"] { flex: 1 1 100%; }
+      .ai-prompt select, .ai-prompt button { flex: 1; }
+    }
+    @media (max-width: 480px) {
+      .ai-prompt select, .ai-prompt button { flex: 1 1 100%; }
+    }
   </style>
 </head>
 <body>
@@ -91,23 +101,23 @@
 
     <section style="margin-top: 24px;">
       <h2>Leaderboard</h2>
-      <table id="leaderboard-table">
+      <div class="table-scroll"><table id="leaderboard-table">
         <thead>
           <tr><th>model</th><th>avg score</th><th>benchmarks</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
       <p class="muted small" id="leaderboard-empty">No benchmark data yet.</p>
     </section>
 
     <section style="margin-top: 24px;">
       <h2>Recent self-cycles</h2>
-      <table id="cycles-table">
+      <div class="table-scroll"><table id="cycles-table">
         <thead>
           <tr><th>cycle</th><th>ts</th><th>prompt</th><th>selected</th><th>strategy</th><th>speedup</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
       <p class="muted small" id="cycles-empty">No cycles yet — run <code>rollout-shield ai cycle</code>.</p>
     </section>
 
@@ -123,12 +133,12 @@
 
     <section style="margin-top: 24px;">
       <h2>Registered models</h2>
-      <table id="models-table">
+      <div class="table-scroll"><table id="models-table">
         <thead>
           <tr><th>id</th><th>name</th><th>family</th><th>description</th></tr>
         </thead>
         <tbody></tbody>
-      </table>
+      </table></div>
     </section>
   </main>
 

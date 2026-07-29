@@ -117,6 +117,9 @@ evidence** that a rollout followed the patterns in `rollout/`.
   subcommand tree. `/api/webhooks/*` HTTP API + dashboard `Webhooks`
   tab. Atomic state at `<state_root>/webhooks/`, advisory fcntl
   lock, 44 tests. See [`docs/WEBHOOKS.md`](docs/WEBHOOKS.md).
+- **Responsive dashboard** — breakpoints at 1024 / 768 / 480 px;
+  tables scroll horizontally on mobile, nav tabs wrap, AI prompt
+  row stacks. Both `index.html` and `ai-assistance.html` updated.
 - **GitHub Actions:** complete (`.github/workflows/` — docs-integrity, triage,
   pr-validate, beads-health-report, monitor-ci; composite action `.github/actions/setup-bd`)
 - **Devcontainer:** maintained (`.devcontainer/devcontainer.json` +
