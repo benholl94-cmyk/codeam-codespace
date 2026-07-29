@@ -1,0 +1,46 @@
+{
+  "schema_version": "0.1.0",
+  "agent_id": "codeam-codespace-default-agent",
+  "display_name": "Codeam Codespace Default Agent",
+  "description": "Default agent identity for the codeam-codespace workspace. Bound to the git committer identity (benholl94-cmyk <274793931+benholl94-cmyk@users.noreply.github.com>). The public_key below is a placeholder; replace it before any production claim is signed. See tools/build-card.sh for the real keypair generation.",
+  "created_at": "2026-07-29T00:00:00Z",
+  "public_keys": [
+    {
+      "id": "agent-key-1",
+      "algorithm": "ed25519",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+      "valid_from": "2026-07-29T00:00:00Z",
+      "valid_until": "2030-01-01T00:00:00Z"
+    }
+  ],
+  "bound_committer": {
+    "name": "benholl94-cmyk",
+    "email": "274793931+benholl94-cmyk@users.noreply.github.com",
+    "github_user_id": "274793931"
+  },
+  "capabilities": {
+    "languages": ["bash", "python", "javascript", "typescript", "yaml", "json", "markdown"],
+    "protocols": ["beads-claims-v0.1", "git", "github-actions"],
+    "tools": ["bd", "git", "gh", "tar", "openssl", "jq"],
+    "limits": {
+      "max_context_tokens": 200000,
+      "max_diff_lines": 1000,
+      "max_runtime_seconds": 3600
+    }
+  },
+  "reputation": {
+    "score": 0,
+    "state": "probationary",
+    "verified": 0,
+    "contradicted": 0,
+    "unresolved": 0,
+    "last_updated": "2026-07-29T00:00:00Z"
+  },
+  "endpoints": {
+    "claims_directory": ".beads/claims/codeam-codespace-default-agent"
+  },
+  "_meta": {
+    "status": "template",
+    "note": "Replace public_keys[0].value with the output of `tools/build-card.sh --print-public-key` before signing any real claims. The placeholder above is invalid (32 zero bytes) and will fail signature verification."
+  }
+}
