@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rollout-shield dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>rollout-shield</h1>
+    <p class="tagline">repo-safe-rollouts — verifiable code promotion</p>
+    <div class="meta">
+      <span id="status-pill" class="pill pill-unknown">…</span>
+      <span id="generated-at"></span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="claims">Claims</button>
+    <button data-tab="alerts">Alerts</button>
+    <button data-tab="reputation">Reputation</button>
+    <button data-tab="keys">Keys</button>
+  </nav>
+
+  <main>
+    <section id="tab-overview" class="tab-pane active">
+      <h2>System status</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>State root</h3>
+          <code id="state-root">…</code>
+        </div>
+        <div class="card">
+          <h3>Agents</h3>
+          <div id="agents-count" class="big-number">…</div>
+          <ul id="agents-list"></ul>
+        </div>
+        <div class="card">
+          <h3>Claims logged</h3>
+          <div id="claims-count" class="big-number">…</div>
+        </div>
+        <div class="card">
+          <h3>Alerts logged</h3>
+          <div id="alerts-count" class="big-number">…</div>
+        </div>
+        <div class="card">
+          <h3>Latest health</h3>
+          <div id="latest-health">…</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-claims" class="tab-pane">
+      <h2>Recent claims</h2>
+      <table id="claims-table">
+        <thead>
+          <tr>
+            <th>id</th><th>type</th><th>agent</th><th>ts</th><th>parent</th><th>signature</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="tab-alerts" class="tab-pane">
+      <h2>Recent alerts</h2>
+      <table id="alerts-table">
+        <thead>
+          <tr><th>id</th><th>severity</th><th>source</th><th>message</th><th>ts</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="tab-reputation" class="tab-pane">
+      <h2>Agent reputation leaderboard</h2>
+      <table id="reputation-table">
+        <thead>
+          <tr><th>agent_id</th><th>score</th><th>events</th><th>last_event_ts</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="tab-keys" class="tab-pane">
+      <h2>Registered keys</h2>
+      <p class="muted">Private key material is never exposed via the API.</p>
+      <table id="keys-table">
+        <thead>
+          <tr><th>id</th><th>agent_id</th><th>algorithm</th><th>fingerprint</th><th>created_at</th><th>hardware_anchored</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <span>rollout-shield dashboard</span>
+    <span class="muted">state: <code id="footer-state-root"></code></span>
+    <button id="refresh" type="button">Refresh</button>
+  </footer>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
