@@ -68,3 +68,5 @@
 sync.remote: "git+https://github.com/CodeAgentMobile/codeam-codespace"
 dolt:
     shared-server: true
+export:
+    auto: true
