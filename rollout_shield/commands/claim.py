@@ -93,6 +93,16 @@ def cmd_create(state: State, agent_id: str, claim_type: str, body: str,
     if claim_type not in VALID_TYPES:
         raise ValueError(f"invalid claim type: {claim_type}")
     ts = int(time.time())
+    # find the signing key for this agent (so we can enforce the policy
+    # before invoking the signer)
+    from ..space import latest_key_for_agent, enforce_policy_for_key, PolicyViolation
+    key = latest_key_for_agent(state, agent_id)
+    if key is None:
+        raise RuntimeError(
+            f"no key registered for agent_id={agent_id}; "
+            "run: rollout-shield keys new --agent-id " + agent_id
+        )
+    enforce_policy_for_key(state, action="claim_create", key_meta=key)
     # sign the body of the claim (everything except the signature)
     preimage = {
         "schema": "rollout-shield.claim/v1",

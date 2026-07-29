@@ -50,37 +50,54 @@ def _generate_keypair() -> tuple[str, str]:
     return priv_pem, pub_pem
 
 
-def cmd_keys_new(state: State, agent_id: str, description: str = "") -> str:
+def cmd_keys_new(state: State, agent_id: str, description: str = "",
+               hardware_anchored: bool = False) -> str:
     """Generate a new Ed25519 keypair and register it with state.
 
     Returns the new key id.
+
+    When ``controller_policy`` is set to ``device-only``, the new key
+    *must* be ``hardware_anchored=True``; otherwise the command raises
+    :class:`PolicyViolation`. The flag is rejected at the CLI level
+    when the policy is ``human-only``.
     """
     priv_pem, pub_pem = _generate_keypair()
     key_id = f"agk_{agent_id}_{uuid.uuid4().hex[:8]}"
     fingerprint = _fingerprint_pubkey(pub_pem)
 
-    # private material lives in a separate, restrictive directory
-    material_dir = state.root / KEYS_MATERIAL_DIRNAME
-    material_dir.mkdir(parents=True, exist_ok=True)
-    priv_path = material_dir / f"{key_id}.pem"
-    priv_path.write_text(priv_pem)
-    try:
-        os_chmod_private(priv_path)
-    except OSError:
-        pass  # non-POSIX; permission hint only
-
-    meta = {
+    # Propose the key metadata so the controller policy can be
+    # consulted BEFORE writing any private material to disk.
+    proposed_meta = {
         "id": key_id,
         "agent_id": agent_id,
         "description": description,
         "algorithm": "Ed25519",
         "public_key_pem": pub_pem,
         "fingerprint": fingerprint,
-        "private_key_path": str(priv_path),
+        "private_key_path": str(state.root / KEYS_MATERIAL_DIRNAME / f"{key_id}.pem"),
         "created_at": int(time.time()),
-        "hardware_anchored": False,
+        "hardware_anchored": hardware_anchored,
     }
-    state.put_key(key_id, meta)
+
+    # Enforce the controller policy. Raises PolicyViolation if disallowed;
+    # in that case we MUST NOT write any private material to disk.
+    from ..space import enforce_policy_for_key, PolicyViolation
+    try:
+        enforce_policy_for_key(state, action="keys_new", key_meta=proposed_meta)
+    except PolicyViolation:
+        raise
+
+    # private material lives in a separate, restrictive directory
+    material_dir = state.root / KEYS_MATERIAL_DIRNAME
+    material_dir.mkdir(parents=True, exist_ok=True)
+    priv_path = Path(proposed_meta["private_key_path"])
+    priv_path.write_text(priv_pem)
+    try:
+        os_chmod_private(priv_path)
+    except OSError:
+        pass  # non-POSIX; permission hint only
+
+    state.put_key(key_id, proposed_meta)
     return key_id
 
 
@@ -100,9 +117,21 @@ def cmd_keys(state: State, args: argparse.Namespace) -> int:
     if sub == "list":
         return _keys_list(state, args)
     if sub == "new":
-        key_id = cmd_keys_new(state,
-                              agent_id=args.agent_id,
-                              description=args.description)
+        # Reject the --hardware-anchored flag if the policy is human-only.
+        from ..space import load_policy, VALID_POLICIES
+        policy = load_policy(state)
+        if args.hardware_anchored and policy == "human-only":
+            print(f"keys new: ERROR — policy=human-only forbids hardware-anchored keys",
+                  file=__import__("sys").stderr)
+            return 1
+        try:
+            key_id = cmd_keys_new(state,
+                                  agent_id=args.agent_id,
+                                  description=args.description,
+                                  hardware_anchored=args.hardware_anchored)
+        except Exception as exc:  # noqa: BLE001
+            print(f"keys new: ERROR — {exc}", file=__import__("sys").stderr)
+            return 1
         print(f"created key: {key_id}")
         keys = state.list_keys()
         for k in keys:
@@ -111,6 +140,8 @@ def cmd_keys(state: State, args: argparse.Namespace) -> int:
                 print(f"  fingerprint: {k.get('fingerprint')}")
                 print(f"  algorithm:   {k.get('algorithm')}")
                 print(f"  material:    {k.get('private_key_path')}")
+                if k.get("hardware_anchored"):
+                    print(f"  hardware_anchored: yes")
         return 0
     if sub == "show":
         meta = state.get_key(args.key_id)

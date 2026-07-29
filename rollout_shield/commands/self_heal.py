@@ -421,6 +421,59 @@ def check_monitoring_recent(state: State, max_age_s: int = 7200) -> CheckRecord:
                        {"age_seconds": age})
 
 
+@_check("controller_policy")
+def check_controller_policy(state: State) -> CheckRecord:
+    """Active state is consistent with the controller policy."""
+    from ..space import load_policy, validate_space
+    try:
+        policy = load_policy(state)
+        consistent, violations = validate_space(state)
+    except Exception as exc:  # noqa: BLE001
+        return CheckRecord("controller_policy", False,
+                           f"policy check failed: {exc}",
+                           {"exception": repr(exc)})
+    errors = [v for v in violations if v[0] == "error"]
+    if not consistent:
+        return CheckRecord(
+            "controller_policy", False,
+            f"policy={policy}: {len(errors)} active violations",
+            {"policy": policy, "violations": violations},
+        )
+    return CheckRecord(
+        "controller_policy", True,
+        f"policy={policy}: state consistent ({len(violations)} advisory)",
+        {"policy": policy, "violations": violations},
+    )
+
+
+@_repair_for("controller_policy")
+def repair_controller_policy(state: State) -> RepairRecord:
+    """Quarantine non-policy-compliant keys (does NOT delete them)."""
+    from ..space import load_policy, check_key_allowed, quarantine_key
+    policy = load_policy(state)
+    actions: list[str] = []
+    quarantined: list[str] = []
+    try:
+        for k in state.list_keys():
+            if k.get("quarantined"):
+                continue
+            allowed, reason = check_key_allowed(policy, k)
+            if not allowed:
+                ok = quarantine_key(state, k["id"], reason=f"auto-quarantine: {reason}")
+                if ok:
+                    actions.append(f"quarantined {k['id']} ({reason})")
+                    quarantined.append(k["id"])
+        rec = check_controller_policy(state)
+        return RepairRecord(
+            "controller_policy", True, rec.ok, rec.message, actions,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return RepairRecord(
+            "controller_policy", True, False,
+            f"repair failed: {exc}", actions,
+        )
+
+
 # ---------- orchestration ----------
 
 

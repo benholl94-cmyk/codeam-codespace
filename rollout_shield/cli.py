@@ -150,6 +150,12 @@ def _cmd_self_test(args: argparse.Namespace) -> int:
     return cmd_self_test(state, args)
 
 
+def _cmd_space(args: argparse.Namespace) -> int:
+    from .commands.space import cmd_space
+    state = State(root=args.state_root)
+    return cmd_space(state, args)
+
+
 def _cmd_host_workspace(args: argparse.Namespace) -> int:
     from .commands.host_workspace import cmd_host_workspace
     state = State(root=args.state_root)
@@ -199,6 +205,9 @@ def build_parser() -> argparse.ArgumentParser:
     pk = sub_keys.add_parser("new", help="generate a new agent keypair", parents=[common])
     pk.add_argument("--agent-id", required=True, help="agent id (becomes part of the key id)")
     pk.add_argument("--description", default="", help="free-text description")
+    pk.add_argument("--hardware-anchored", action="store_true",
+                    help="mark this key as hardware-anchored (device-attested); "
+                         "required when controller_policy=device-only")
     pk.set_defaults(keys_command="new")
     pk = sub_keys.add_parser("show", help="show a registered key (public fields only)",
                              parents=[common])
@@ -285,6 +294,37 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--skip-dashboard", action="store_true",
                    help="skip the dashboard HTTP smoke step")
     p.set_defaults(func=_cmd_self_test)
+
+    # space — controller policy (shared | device-only | human-only)
+    p = sub.add_parser("space",
+                       help="inspect/manage the controller policy "
+                            "(which keys are permitted to sign claims)",
+                       parents=[common])
+    sub_space = p.add_subparsers(dest="space_command", required=False)
+    ps = sub_space.add_parser("show", help="print current policy + statistics",
+                              parents=[common])
+    ps.set_defaults(space_command="show")
+    ps = sub_space.add_parser("set-policy", help="switch the controller policy",
+                              parents=[common])
+    ps.add_argument("policy", choices=["shared", "device-only", "human-only"],
+                    help="target controller policy")
+    ps.add_argument("--yes", action="store_true",
+                    help="confirm the policy change (skip the safety prompt)")
+    ps.set_defaults(space_command="set-policy")
+    ps = sub_space.add_parser("validate",
+                              help="enforce the policy against the current state",
+                              parents=[common])
+    ps.set_defaults(space_command="validate")
+    ps = sub_space.add_parser("quarantine", help="move a key out of the active registry",
+                              parents=[common])
+    ps.add_argument("key_id", help="key id to quarantine")
+    ps.add_argument("--reason", default="", help="reason for the quarantine")
+    ps.set_defaults(space_command="quarantine")
+    ps = sub_space.add_parser("unquarantine", help="reverse a quarantine",
+                              parents=[common])
+    ps.add_argument("key_id", help="key id to unquarantine")
+    ps.set_defaults(space_command="unquarantine")
+    p.set_defaults(func=_cmd_space)
 
     # host-workspace
     p = sub.add_parser("host-workspace",

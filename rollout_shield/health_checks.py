@@ -142,6 +142,44 @@ def check_alert_rate(state: State, max_alerts_per_hour: int = 10) -> HealthResul
     )
 
 
+def check_controller_policy(state: State) -> HealthResult:
+    """The current state is consistent with the configured controller policy.
+
+    Fails if any non-quarantined key in the registry is not allowed
+    under the active policy (e.g. human keys under device-only).
+    Warns if any historical claim was signed by a now-rejected signer.
+    """
+    start = time.perf_counter()
+    try:
+        from .space import load_policy, validate_space
+        policy = load_policy(state)
+        consistent, violations = validate_space(state)
+    except Exception as exc:  # noqa: BLE001
+        return HealthResult(
+            name="controller_policy",
+            ok=False,
+            message=f"could not evaluate controller policy: {exc}",
+            duration_ms=(time.perf_counter() - start) * 1000,
+        )
+
+    errors = [v for v in violations if v[0] == "error"]
+    if not consistent:
+        return HealthResult(
+            name="controller_policy",
+            ok=False,
+            message=f"policy={policy}: {len(errors)} violations",
+            details={"policy": policy, "violations": violations},
+            duration_ms=(time.perf_counter() - start) * 1000,
+        )
+    return HealthResult(
+        name="controller_policy",
+        ok=True,
+        message=f"policy={policy}: state consistent ({len(violations)} advisory)",
+        details={"policy": policy, "violations": violations},
+        duration_ms=(time.perf_counter() - start) * 1000,
+    )
+
+
 def check_keys_present(state: State) -> HealthResult:
     """Warn if no agent keys have been generated yet."""
     start = time.perf_counter()
@@ -194,6 +232,7 @@ DEFAULT_CHECKS: list[Check] = [
     check_disk_space,
     check_recent_claims,
     check_alert_rate,
+    check_controller_policy,
     check_keys_present,
     check_self_reachable,
 ]
