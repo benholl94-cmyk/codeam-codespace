@@ -18,13 +18,11 @@ Adding a new check means:
 
 from __future__ import annotations
 
-import os
 import shutil
 import socket
 import time
-from dataclasses import dataclass, field, asdict
-from pathlib import Path
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 
 from .state import State
 
@@ -51,7 +49,7 @@ def _measure(fn: Callable[[], HealthResult]) -> HealthResult:
         return fn()
     finally:
         # If fn returned a result, ensure duration_ms is set.
-        pass
+        _ = time.perf_counter() - start
 
 
 # ---------- built-in checks ----------
@@ -109,7 +107,7 @@ def check_recent_claims(state: State, max_age_seconds: int = 86400) -> HealthRes
     if not recent:
         return HealthResult(
             name="recent_claims",
-            ok=True,
+            ok=False,
             message="no claims yet (initial state)",
             details={"last_claim_ts": None},
             duration_ms=(time.perf_counter() - start) * 1000,
@@ -185,10 +183,13 @@ def check_keys_present(state: State) -> HealthResult:
     start = time.perf_counter()
     keys = state.list_keys()
     ok = len(keys) > 0
+    n = len(keys)
+    msg = (f"{n} key(s) registered" if ok
+           else "no agent keys registered (0 keys); run `rollout-shield keys new`")
     return HealthResult(
         name="keys_present",
         ok=ok,
-        message=f"{len(keys)} key(s) registered" if ok else "no agent keys registered; run `rollout-shield keys new`",
+        message=msg,
         details={"key_ids": [k.get("id") for k in keys]},
         duration_ms=(time.perf_counter() - start) * 1000,
     )

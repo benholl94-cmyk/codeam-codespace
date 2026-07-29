@@ -132,7 +132,7 @@ def test_cli_end_to_end_against_mock_receiver(scratch_state_root):
         # Deliver
         payload = json.dumps({"event": "smoke", "ts": int(time.time())})
         r2 = _run(["webhooks", "deliver", "--target", "smoke-recv",
-                   "--payload", payload],
+                   "--payload", payload, "--json"],
                   scratch_state_root)
         assert r2["ok"], r2["stderr"]
         rec = json.loads(r2["stdout"])
@@ -199,7 +199,7 @@ def test_cli_dlq_and_replay(scratch_state_root):
               "--sign-mode", "none", "--max-attempts", "2"],
              scratch_state_root)
         r1 = _run(["webhooks", "deliver", "--target", "fail-recv",
-                   "--payload", json.dumps({"e": "dlq"})],
+                   "--payload", json.dumps({"e": "dlq"}), "--json"],
                   scratch_state_root)
         assert r1["ok"], r1["stderr"]
         delivery_id = json.loads(r1["stdout"])["enqueued"]["delivery_id"]
@@ -208,14 +208,14 @@ def test_cli_dlq_and_replay(scratch_state_root):
         for _ in range(3):
             drain = _run(["webhooks", "drain"], scratch_state_root, timeout=15.0)
             assert drain["ok"]
-        r2 = _run(["webhooks", "deliveries", "show", delivery_id],
+        r2 = _run(["webhooks", "deliveries", "show", delivery_id, "--json"],
                   scratch_state_root)
         assert r2["ok"]
         rec = json.loads(r2["stdout"])
         assert rec["status"] == "dlq"
 
         # Replay
-        r3 = _run(["webhooks", "replay", delivery_id], scratch_state_root)
+        r3 = _run(["webhooks", "replay", delivery_id, "--json"], scratch_state_root)
         assert r3["ok"], r3["stderr"]
         assert json.loads(r3["stdout"])["replayed"]["status"] == "pending"
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import time
-
 
 def test_state_root_writable_passes(scratch_state):
     from rollout_shield.health_checks import check_state_root_writable
@@ -46,7 +44,11 @@ def test_loopback_reachable_passes(scratch_state):
 
 
 def test_aggregate_healthy_when_all_pass(scratch_state):
-    from rollout_shield.health_checks import check_keys_present, aggregate
+    from rollout_shield.health_checks import (
+        aggregate,
+        check_keys_present,
+        check_self_reachable,
+    )
     # patch a passing check onto the scratch state
     scratch_state.put_key("agk_test_x", {"id": "agk_test_x", "agent_id": "a"})
     results = [
@@ -59,7 +61,7 @@ def test_aggregate_healthy_when_all_pass(scratch_state):
 
 
 def test_aggregate_unhealthy_when_all_fail(scratch_state):
-    from rollout_shield.health_checks import check_keys_present, check_recent_claims, aggregate
+    from rollout_shield.health_checks import aggregate, check_keys_present, check_recent_claims
     results = [
         check_keys_present(scratch_state).to_dict(),
         check_recent_claims(scratch_state).to_dict(),
@@ -81,8 +83,9 @@ def test_controller_policy_set_and_load(scratch_state):
 
 
 def test_controller_policy_rejects_unknown(scratch_state):
-    from rollout_shield.space import save_policy
     import pytest
+
+    from rollout_shield.space import save_policy
     with pytest.raises(ValueError):
         save_policy(scratch_state, "garbage")
 

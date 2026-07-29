@@ -22,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-from .state import State, atomic_write_json
+from .state import State
 
 
 def _cmd_install(args: argparse.Namespace) -> int:
@@ -36,7 +36,7 @@ def _cmd_install(args: argparse.Namespace) -> int:
     keys = state.list_keys()
     if not keys:
         from .commands.keys import cmd_keys_new
-        key_id = cmd_keys_new(state, agent_id="default", description="default agent key (auto-generated at install)")
+        cmd_keys_new(state, agent_id="default", description="default agent key (auto-generated at install)")
         keys = state.list_keys()
 
     summary = state.summary()
@@ -203,22 +203,44 @@ def _cmd_webhooks(args: argparse.Namespace) -> int:
     return cmd_webhooks(state, args)
 
 
+def _cmd_finetune(args: argparse.Namespace) -> int:
+    """Adapter finetuning subsystem (datasets, runs, eval, promotion)."""
+    from .commands.finetune import dispatch as finetune_dispatch
+    state = State(root=args.state_root)
+    return finetune_dispatch(state, args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Common args available on every subcommand. Using `parents=` makes
     # argparse pass them through to subparsers as if they were defined
     # there. This lets `rollout-shield <subcmd> --state-root DIR` work
     # without duplicating the argument on each subparser.
+    # Use `default=argparse.SUPPRESS` so the subparser does NOT clobber the
+    # main parser's parsed value when it appears before the subcommand (e.g.
+    # `rollout-shield --state-root X install`). SUPPRESS means "leave the
+    # attribute unset if the flag wasn't seen", which preserves the parent's
+    # value during the namespace merge.
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--state-root", type=Path, default=None,
-                        help="override state root directory (default: ./.rollout-shield)")
-    common.add_argument("--json", action="store_true",
+    common.add_argument("--state-root", type=Path, default=argparse.SUPPRESS,
+                        help="override state root directory (default: ~/.rollout-shield)")
+    common.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
                         help="emit JSON instead of human-readable output")
 
     parser = argparse.ArgumentParser(
         prog="rollout-shield",
         description="Hardware+software platform for repo-safe-rollouts (CLI)",
-        parents=[common],
     )
+    # Mirror common args on the main parser too so users can write
+    # `rollout-shield --state-root X install` and `rollout-shield install
+    # --state-root X` interchangeably. Argparse's `parents=[common]`
+    # propagation loses values when applied to BOTH the main parser and a
+    # subparser, so we duplicate the registration here. Keep this in sync
+    # with the `common` parser below.
+    parser.add_argument("--state-root", type=Path, default=argparse.SUPPRESS,
+                        help="override state root directory "
+                             "(default: ~/.rollout-shield)")
+    parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS,
+                        help="emit JSON instead of human-readable output")
     parser.add_argument("--version", action="store_true",
                         help="print version and exit")
     sub = parser.add_subparsers(dest="command", required=False)
@@ -522,6 +544,10 @@ def build_parser() -> argparse.ArgumentParser:
     from .commands.webhooks import build_parser as _webhooks_build_parser
     _webhooks_build_parser(sub)
 
+    # finetune — adapter finetuning subsystem (datasets, runs, eval, promotion)
+    from .commands.finetune import build_parser as _finetune_build_parser
+    _finetune_build_parser(sub)
+
     return parser
 
 
@@ -537,6 +563,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"rollout-shield {__version__}")
         return 0
     args = parser.parse_args(argv)
+    # Normalize SUPPRESS sentinels from `common` parent defaults — argparse
+    # uses them to avoid clobbering parsed values across the main/subparser
+    # merge, but downstream code expects a real value (or None).
+    if not hasattr(args, "state_root"):
+        args.state_root = None
+    if not hasattr(args, "json"):
+        args.json = False
     if not hasattr(args, "func"):
         parser.print_help()
         return 0

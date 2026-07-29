@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
-
 
 CLI = Path.home() / "usr" / "bin" / "rollout-shield"
 HAS_INSTALL = CLI.exists()
@@ -50,8 +46,10 @@ def test_cli_keys_new_then_list(scratch_state_root, requires_cryptography):
     r = _run_cli(["keys", "list", "--json"], scratch_state_root)
     assert r["ok"]
     payload = json.loads(r["stdout"])
-    assert len(payload["keys"]) == 1
-    assert payload["keys"][0]["agent_id"] == "test-a"
+    # install auto-creates a `default` key, plus the test-a we just added.
+    agent_ids = [k["agent_id"] for k in payload["keys"]]
+    assert "test-a" in agent_ids
+    assert "default" in agent_ids
 
 
 @pytest.mark.skipif(not HAS_INSTALL, reason="scripts/install.sh has not been run")
