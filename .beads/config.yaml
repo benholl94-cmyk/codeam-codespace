@@ -71,7 +71,7 @@
 # writable remote. See scripts/setup-fork.sh for an idempotent helper.
 #
 # sync.remote: "git@github.com:<owner>/codeam-codespace.git"
-sync.remote: ""
+sync.remote: "https://github.com/benholl94-cmyk/codeam-codespace.git"
 dolt:
     shared-server: true
 export:
