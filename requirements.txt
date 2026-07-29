@@ -1,0 +1,5 @@
+# rollout-shield runtime dependencies.
+# Only one runtime dep: the `cryptography` package for Ed25519 keys + signing.
+# Everything else is Python 3 stdlib.
+
+cryptography>=42.0.0

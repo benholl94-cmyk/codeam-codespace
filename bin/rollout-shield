@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""rollout-shield CLI entry point.
+
+Usage:
+    rollout-shield <command> [options]
+    rollout-shield install
+    rollout-shield status
+    rollout-shield keys new --agent-id <id>
+    rollout-shield claim create --agent-id <id> --type change --body "..."
+    rollout-shield monitor --once
+    rollout-shield dashboard --port 8765
+    rollout-shield self-check
+
+Run `rollout-shield --help` for the full command reference.
+"""
+
+import os
+import sys
+from pathlib import Path
+
+
+HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parent
+PKG_PARENT = REPO_ROOT  # rollout_shield/ is a sibling of bin/
+
+# ensure the package parent is on sys.path so `rollout_shield` is importable
+if str(PKG_PARENT) not in sys.path:
+    sys.path.insert(0, str(PKG_PARENT))
+
+try:
+    from rollout_shield.cli import main
+except ImportError as exc:
+    sys.stderr.write(
+        f"rollout-shield: failed to import CLI ({exc}). "
+        "Is the rollout_shield package present alongside bin/rollout-shield?\n"
+    )
+    raise
+
+if __name__ == "__main__":
+    sys.exit(main())
