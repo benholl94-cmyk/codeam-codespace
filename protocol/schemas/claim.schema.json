@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeam-codespace/protocol/schemas/claim.schema.json",
+  "title": "Claim",
+  "description": "A claim produced under the Claims Protocol v0.1. Discriminated by claim_type; each branch validates the type-specific body schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "claim_type",
+    "claim_id",
+    "agent_id",
+    "issued_at",
+    "parent_hashes",
+    "body",
+    "signature"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "claim_type": {
+      "type": "string",
+      "enum": [
+        "intent",
+        "change",
+        "test",
+        "verify",
+        "contradict",
+        "delegate"
+      ]
+    },
+    "claim_id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "ULID (Crockford base32, 26 chars)."
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Reference to agent identity declared in agent/identity.json."
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "parent_hashes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^sha256:[a-f0-9]{64}$"
+      }
+    },
+    "beads_issue_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+-[a-z0-9]+$"
+    },
+    "body": {
+      "oneOf": [
+        { "$ref": "#/$defs/intent_body" },
+        { "$ref": "#/$defs/change_body" },
+        { "$ref": "#/$defs/test_body" },
+        { "$ref": "#/$defs/verify_body" },
+        { "$ref": "#/$defs/contradict_body" },
+        { "$ref": "#/$defs/delegate_body" }
+      ]
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_id", "algorithm", "value", "signed_at"],
+      "properties": {
+        "key_id": { "type": "string", "minLength": 1 },
+        "algorithm": { "type": "string", "const": "ed25519" },
+        "value": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9+/]{86}==$",
+          "description": "Base64-encoded 64-byte Ed25519 signature."
+        },
+        "signed_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "intent_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "rationale", "acceptance"],
+      "properties": {
+        "summary": { "type": "string", "minLength": 1, "maxLength": 280 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "acceptance": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "change_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["diff_hash", "files_touched", "lines_added", "lines_removed", "summary"],
+      "properties": {
+        "diff_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "files_touched": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "lines_added": { "type": "integer", "minimum": 0 },
+        "lines_removed": { "type": "integer", "minimum": 0 },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "test_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["test_suite", "exit_code", "output_hash", "summary"],
+      "properties": {
+        "test_suite": { "type": "string", "minLength": 1 },
+        "exit_code": { "type": "integer" },
+        "output_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "duration_seconds": { "type": "number", "minimum": 0 },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "verify_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verified_claim_hash", "method", "reviewer_notes"],
+      "properties": {
+        "verified_claim_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "method": {
+          "type": "string",
+          "enum": ["manual-review", "automated-check", "cross-agent-consensus"]
+        },
+        "reviewer_notes": { "type": "string" }
+      }
+    },
+    "contradict_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contradicted_claim_hash", "reason_code", "explanation"],
+      "properties": {
+        "contradicted_claim_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "reason_code": {
+          "type": "string",
+          "enum": [
+            "incorrect-output",
+            "security-violation",
+            "license-violation",
+            "out-of-scope",
+            "incomplete-implementation",
+            "test-failure",
+            "other"
+          ]
+        },
+        "explanation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "delegate_body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delegate_to", "beads_issue_id", "context_summary"],
+      "properties": {
+        "delegate_to": { "type": "string", "minLength": 1 },
+        "beads_issue_id": { "type": "string", "pattern": "^[a-z0-9_-]+-[a-z0-9]+$" },
+        "context_summary": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

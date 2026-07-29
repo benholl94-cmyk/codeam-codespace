@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeam-codespace/protocol/agent-card.schema.json",
+  "title": "Agent Capability Card",
+  "description": "A portable capability declaration for an AI coding agent. Extends A2A/MCP conventions with a long-lived identity and reputation pre-loaded.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "agent_id",
+    "display_name",
+    "created_at",
+    "public_keys",
+    "capabilities",
+    "endpoints"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "0.1.0"
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]{1,62}$",
+      "description": "Globally unique agent identifier (DNS-label style)."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+    },
+    "public_keys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "algorithm", "value"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "algorithm": { "type": "string", "const": "ed25519" },
+          "value": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9+/]{42}==$",
+            "description": "Base64-encoded 32-byte Ed25519 public key."
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languages", "protocols", "tools", "limits"],
+      "properties": {
+        "languages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Programming languages the agent can work with (ISO codes or free-form)."
+        },
+        "protocols": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["a2a", "mcp", "beads-claims-v0.1", "github-actions", "git"]
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "External tools the agent can invoke (free-form, e.g. 'pytest', 'docker', 'codeam pair-auto')."
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_context_tokens": { "type": "integer", "minimum": 0 },
+            "max_diff_lines": { "type": "integer", "minimum": 0 },
+            "max_runtime_seconds": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "reputation": {
+      "type": "object",
+      "description": "Reputation snapshot, recomputed on each verification cycle (see protocol/REPUTATION.md).",
+      "additionalProperties": false,
+      "required": ["score", "state", "verified", "contradicted", "unresolved"],
+      "properties": {
+        "score": { "type": "number" },
+        "state": {
+          "type": "string",
+          "enum": ["trusted", "established", "probationary", "untrusted"]
+        },
+        "verified": { "type": "integer", "minimum": 0 },
+        "contradicted": { "type": "integer", "minimum": 0 },
+        "unresolved": { "type": "integer", "minimum": 0 },
+        "last_updated": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?Z$"
+        }
+      }
+    },
+    "endpoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "claims_directory": {
+          "type": "string",
+          "description": "Path to the directory where this agent stores its claims."
+        },
+        "claim_post": {
+          "type": "string",
+          "format": "uri",
+          "description": "HTTP endpoint that accepts claim submissions (optional, for relay integration)."
+        },
+        "claim_query": {
+          "type": "string",
+          "format": "uri",
+          "description": "HTTP endpoint for querying claims by hash or agent_id (optional)."
+        }
+      }
+    }
+  }
+}
