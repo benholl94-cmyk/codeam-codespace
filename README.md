@@ -30,7 +30,10 @@ reasoning behind the Hardware+Software framing.
 | `rollout/` | Safe-rollout patterns (canary, blue-green, rollback, claim-deploy) |
 | `protocol/` | Claims Protocol spec (claim types, signing, DAG) |
 | `agent/` | Agent specification (identity, roles, signing lifecycle) |
+| `rollout_shield/` | Runtime layer: Python CLI + monitor daemon + HTTP dashboard + JSON API |
+| `bin/` | Executable entry points (`rollout-shield`) |
 | `tools/` | Utility scripts (keygen, claim sign/verify, rep compute, export) |
+| `monitoring/` | Runtime-side monitoring reference (state layout, alert dispatch) |
 | `scripts/` | Operational scripts (bd export, dolt bundle) |
 | `docs/` | Public engineering documentation |
 | `.github/` | GitHub Actions workflows and templates |
@@ -68,10 +71,30 @@ evidence** that a rollout followed the patterns in `rollout/`.
 - **Agent spec:** complete (`agent/README.md`, `agent/identity-binding.md`,
   `agent/role-lifecycle.md`)
 - **Tools:** complete (`tools/` — keygen, sign, verify, rep, export, dolt-bundle)
+- **Runtime CLI + dashboard + persistent monitor:** complete
+  (`rollout_shield/` Python package, `bin/rollout-shield` entry,
+  `setup.sh` installer, `monitoring/` ops docs). 9 subcommands,
+  Ed25519-signed claims, JSON HTTP API + vanilla-JS dashboard,
+  daemon-mode monitor with webhook alerts.
 - **GitHub Actions:** complete (`.github/workflows/` — docs-integrity, triage,
-  pr-validate, beads-health-report; composite action `.github/actions/setup-bd`)
+  pr-validate, beads-health-report, monitor-ci; composite action `.github/actions/setup-bd`)
 - **Devcontainer:** maintained (`.devcontainer/devcontainer.json` +
   `Dockerfile` — still the recommended way to open this repo)
+
+## Quick start (runtime)
+
+```bash
+./setup.sh                                    # install + initialize state
+./bin/rollout-shield status                   # system summary
+./bin/rollout-shield self-check               # environment diagnostics
+./bin/rollout-shield claim create \
+    --agent-id my-agent \
+    --type change \
+    --body "applied diff abc123 to canary"    # emit a signed claim
+./bin/rollout-shield monitor --once           # one-shot health report
+./bin/rollout-shield monitor --daemon         # persistent monitoring
+./bin/rollout-shield dashboard --port 8765    # web UI at http://127.0.0.1:8765/
+```
 
 ---
 
