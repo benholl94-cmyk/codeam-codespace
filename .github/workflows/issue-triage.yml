@@ -1,0 +1,76 @@
+# issue-triage.yml — auto-labels and welcomes newly opened issues so downstream
+# agents can pick them up. Read-mostly: only writes labels and one comment.
+#
+# Trigger: issues opened.
+# Skips:  (a) issues that are actually PRs (issue events from PRs),
+#         (b) issues already labeled `no-triage` (human opt-out).
+#
+# Side effects: adds `needs-triage` + `agent-routable` labels; posts one
+# idempotent welcome comment per issue. No git operations.
+
+name: issue-triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage:
+    name: Triage new issue
+    runs-on: ubuntu-latest
+    # Skip issues that were actually created from a PR.
+    if: github.event.issue.pull_request == null
+    steps:
+      - name: Add triage labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue_number = context.issue.number;
+            const labels = ['needs-triage', 'agent-routable'];
+            const existing = (await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+            })).data.map(l => l.name);
+            const toAdd = labels.filter(l => !existing.includes(l));
+            if (toAdd.length === 0) {
+              core.info(`All triage labels already present on #${issue_number}`);
+              return;
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              labels: toAdd,
+            });
+            core.info(`Added labels [${toAdd.join(', ')}] to #${issue_number}`);
+
+      - name: Post welcome comment with bd intake checklist
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          edit-mode: replace
+          # Marker so re-runs update the same comment instead of posting duplicates.
+          comment-tag: triage-bot-welcome
+          body: |
+            👋 Thanks for opening this issue! The autonomous agent workflow has picked it up.
+
+            **Next steps (for the agent / maintainer):**
+
+            1. Create the matching Beads issue locally:
+               ```bash
+               bd create --title="${{ github.event.issue.title }}" \
+                         --type=task \
+                         --priority=2 \
+                         --description="$(echo '${{ github.event.issue.body }}' | head -c 500)"
+               ```
+            2. Link the bd issue ID back here as a comment.
+            3. Pick up the task via `bd update <id> --claim`.
+
+            **If you want to opt this issue out of bot triage**, add the `no-triage` label and the bot will skip future updates.
+
+            — _issue-triage bot_
