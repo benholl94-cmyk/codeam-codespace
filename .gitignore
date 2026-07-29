@@ -7,3 +7,12 @@
 
 # Workspace-local build/output artifacts (scripts/export-state.sh output)
 dist/
+
+# rollout-shield runtime state (CLI + monitor + dashboard write here)
+.rollout-shield/
+
+# Python bytecode (CLI package)
+__pycache__/
+*.pyc
+*.pyo
+
