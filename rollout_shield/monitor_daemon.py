@@ -37,6 +37,7 @@ from pathlib import Path
 from .alerter import dispatch_alert
 from .health_checks import aggregate, run_all_checks
 from .host_checks import run_host_checks
+from .repo_checks import run_repo_checks
 from .state import State
 
 
@@ -47,11 +48,15 @@ class Daemon:
     """Long-running monitor daemon."""
 
     def __init__(self, state: State, interval: int, webhook_url: str = "",
-                 disabled_checks: list[str] | None = None):
+                 disabled_checks: list[str] | None = None,
+                 self_heal_enabled: bool = True,
+                 self_heal_interval_cycles: int = 5):
         self.state = state
         self.interval = max(1, interval)
         self.webhook_url = webhook_url
         self.disabled_checks = disabled_checks or []
+        self.self_heal_enabled = self_heal_enabled
+        self.self_heal_interval_cycles = max(1, self_heal_interval_cycles)
         self._stop = False
         self.heartbeat_path = self.state.root / DAEMON_HEARTBEAT_FILE
         self._register_signal_handlers()
@@ -85,12 +90,57 @@ class Daemon:
 
     # ---------- one cycle ----------
 
+    def _maybe_self_heal(self, cycle: int, summary: dict) -> None:
+        """Every N cycles, run self-heal if anything failed.
+
+        Closed-loop healing: when a check fails repeatedly, attempt a
+        deterministic repair. Failures-of-repair themselves are logged
+        but never crash the daemon.
+        """
+        if not self.self_heal_enabled:
+            return
+        if cycle == 0:
+            return  # never self-heal on the bootstrap cycle
+        if cycle % self.self_heal_interval_cycles != 0:
+            return
+        if summary["status"] == "healthy":
+            return
+        try:
+            from .commands.self_heal import run_self_heal
+            heal_summary = run_self_heal(
+                self.state,
+                dry_run=False,
+                auto_repair=True,
+                include_path_repair=False,  # don't mutate the user's shell rc
+            )
+            # If anything was repaired, append a follow-up alert so the
+            # operator sees it on the timeline.
+            if heal_summary["repairs_attempted"] > 0:
+                alert = {
+                    "severity": "info" if heal_summary["all_healthy"] else "warning",
+                    "source": "monitor_daemon.self_heal",
+                    "message": (f"self-heal cycle: "
+                                f"{heal_summary['repairs_fixed']} fixed, "
+                                f"{heal_summary['repairs_unfixed']} unfixed"),
+                    "summary": heal_summary,
+                }
+                dispatch_alert(self.state, alert, webhook_url=self.webhook_url)
+        except Exception as exc:  # noqa: BLE001
+            err_alert = {
+                "severity": "warning",
+                "source": "monitor_daemon.self_heal",
+                "message": f"self-heal cycle raised: {exc}",
+            }
+            dispatch_alert(self.state, err_alert, webhook_url=self.webhook_url)
+
     def run_once(self, cycle: int = 0) -> dict:
-        # Run BOTH the rollout-shield state checks AND the host kernel
-        # checks every cycle. The state checks observe the runtime;
-        # the host checks observe the user's machine + OS.
+        # Run THREE classes of checks every cycle:
+        #   1. rollout-shield state checks  (observe the runtime)
+        #   2. host kernel checks          (observe the user's machine + OS)
+        #   3. repo-level checks           (observe the repo as a self-managing tool)
         results = run_all_checks(self.state, disabled=self.disabled_checks)
         results += run_host_checks(self.state, disabled=self.disabled_checks)
+        results += run_repo_checks(self.state, disabled=self.disabled_checks)
         summary = aggregate(results)
         self.state.append_health(summary)
         self._write_heartbeat(cycle, summary["status"])
@@ -102,6 +152,8 @@ class Daemon:
                 "summary": summary,
             }
             dispatch_alert(self.state, alert, webhook_url=self.webhook_url)
+        # Closed-loop: periodically attempt repairs
+        self._maybe_self_heal(cycle, summary)
         return summary
 
     # ---------- main loop ----------
@@ -158,10 +210,14 @@ def main(argv: list[str] | None = None) -> int:
         args.webhook_url = cfg.get("alert_webhook_url", "")
     interval = args.interval or cfg.get("monitor_interval_seconds", 60)
     disabled = [c.strip() for c in args.disabled_checks.split(",") if c.strip()]
+    self_heal_enabled = bool(cfg.get("self_heal_enabled", True))
+    self_heal_interval_cycles = int(cfg.get("self_heal_interval_cycles", 5))
 
     daemon = Daemon(state, interval=interval,
                     webhook_url=args.webhook_url,
-                    disabled_checks=disabled)
+                    disabled_checks=disabled,
+                    self_heal_enabled=self_heal_enabled,
+                    self_heal_interval_cycles=self_heal_interval_cycles)
 
     if args.once:
         summary = daemon.run_once(cycle=0)

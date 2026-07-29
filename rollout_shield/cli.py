@@ -138,6 +138,18 @@ def _cmd_self_check(args: argparse.Namespace) -> int:
     return cmd_self_check(state, args)
 
 
+def _cmd_self_heal(args: argparse.Namespace) -> int:
+    from .commands.self_heal import cmd_self_heal
+    state = State(root=args.state_root)
+    return cmd_self_heal(state, args)
+
+
+def _cmd_self_test(args: argparse.Namespace) -> int:
+    from .commands.self_test import cmd_self_test
+    state = State(root=args.state_root)
+    return cmd_self_test(state, args)
+
+
 def _cmd_host_workspace(args: argparse.Namespace) -> int:
     from .commands.host_workspace import cmd_host_workspace
     state = State(root=args.state_root)
@@ -248,6 +260,31 @@ def build_parser() -> argparse.ArgumentParser:
     # self-check
     p = sub.add_parser("self-check", help="diagnose environment", parents=[common])
     p.set_defaults(func=_cmd_self_check)
+
+    # self-heal — diagnose + auto-repair
+    p = sub.add_parser("self-heal",
+                       help="diagnose common issues and attempt automatic repair",
+                       parents=[common])
+    p.add_argument("--dry-run", action="store_true",
+                   help="list what would be repaired, but make no changes")
+    p.add_argument("--no-repair", action="store_true",
+                   help="report failing checks without invoking any repair")
+    p.add_argument("--include-path-repair", action="store_true",
+                   help="also flag the PATH-hint check (manual action required)")
+    p.set_defaults(func=_cmd_self_heal)
+
+    # self-test — end-to-end smoke test against a scratch state
+    p = sub.add_parser("self-test",
+                       help="end-to-end smoke test against a scratch state root",
+                       parents=[common])
+    p.add_argument("--scratch-root", default=None,
+                   help="override the scratch state directory "
+                        "(default: mkdtemp under TMPDIR)")
+    p.add_argument("--keep-scratch", action="store_true",
+                   help="do not delete the scratch state on exit")
+    p.add_argument("--skip-dashboard", action="store_true",
+                   help="skip the dashboard HTTP smoke step")
+    p.set_defaults(func=_cmd_self_test)
 
     # host-workspace
     p = sub.add_parser("host-workspace",
