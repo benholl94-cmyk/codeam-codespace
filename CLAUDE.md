@@ -61,6 +61,43 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 <!-- END BEADS INTEGRATION -->
 
 
+## Workspace model
+
+`rollout-shield` operates in TWO workspaces, not one:
+
+- **Repo-workspace** — `/workspaces/codeam-codespace/` (or wherever this repo is
+  checked out). The artifact: source code, spec docs, issue tracker state, git
+  history.
+- **User hardware+software kernel-workspace** — the host machine. The runtime
+  substrate: CPU/memory/disk/network, OS kernel, processes, services, the
+  user's home directory.
+
+Agents working in this repo should consider BOTH workspaces:
+
+- Spec docs, code, and tests live in the **repo**.
+- The CLI (`~/.local/bin/rollout-shield`), the persistent state
+  (`~/.rollout-shield/`), the monitor daemon (`rollout-shield-daemon`), and the
+  dashboard (`rollout-shield dashboard`) live on the **host**.
+- Health checks observe the **host** (load, memory, disk mounts, listening
+  sockets, DNS resolution) as well as the **repo state** (claims, alerts, key
+  registrations).
+
+When adding new artifacts, decide explicitly: is this a repo artifact (commit
+it) or a host artifact (install it on the machine)? Cross-cut views: see
+`rollout-shield host-workspace` for a single printout of both.
+
+Quick reference:
+
+```bash
+rollout-shield                      # global CLI (symlinked to ~/.local/bin)
+rollout-shield host-workspace       # cross-cut view: repo + host + rollout-shield state
+rollout-shield monitor --once       # one health-check cycle
+rollout-shield-daemon start         # start persistent monitor daemon (background)
+rollout-shield-daemon status        # check daemon + heartbeat
+rollout-shield-daemon stop          # stop daemon
+rollout-shield dashboard --port 8765  # web UI on http://127.0.0.1:8765/
+```
+
 ## Build & Test
 
 _Add your build and test commands here_

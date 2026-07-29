@@ -32,7 +32,7 @@ from typing import Any, Iterator
 
 
 SCHEMA_VERSION = 1
-DEFAULT_STATE_ROOT = Path(os.environ.get("ROLLOUT_SHIELD_STATE", ".rollout-shield"))
+DEFAULT_STATE_ROOT = Path.home() / ".rollout-shield"
 
 
 @dataclass
@@ -81,7 +81,15 @@ class State:
     """Persistent state container for rollout-shield."""
 
     def __init__(self, root: Path | str | None = None):
-        self.root = Path(root) if root else DEFAULT_STATE_ROOT
+        if root:
+            self.root = Path(root).expanduser()
+        elif os.environ.get("ROLLOUT_SHIELD_STATE"):
+            self.root = Path(os.environ["ROLLOUT_SHIELD_STATE"]).expanduser()
+        else:
+            # default to host-level ~/.rollout-shield, NOT repo-level
+            # ./.rollout-shield — the workspace model is that state lives
+            # on the user's machine, not inside the repo.
+            self.root = Path.home() / ".rollout-shield"
         self.root.mkdir(parents=True, exist_ok=True)
         self.config_path = self.root / "config.json"
         self.reputation_path = self.root / "reputation.json"

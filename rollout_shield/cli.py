@@ -138,6 +138,12 @@ def _cmd_self_check(args: argparse.Namespace) -> int:
     return cmd_self_check(state, args)
 
 
+def _cmd_host_workspace(args: argparse.Namespace) -> int:
+    from .commands.host_workspace import cmd_host_workspace
+    state = State(root=args.state_root)
+    return cmd_host_workspace(state, args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Common args available on every subcommand. Using `parents=` makes
     # argparse pass them through to subparsers as if they were defined
@@ -236,6 +242,14 @@ def build_parser() -> argparse.ArgumentParser:
     # self-check
     p = sub.add_parser("self-check", help="diagnose environment", parents=[common])
     p.set_defaults(func=_cmd_self_check)
+
+    # host-workspace
+    p = sub.add_parser("host-workspace",
+                       help="cross-cut view of the two workspaces (repo + host kernel)",
+                       parents=[common])
+    p.add_argument("--include-checks", action="store_true",
+                   help="include the full health-check results in the JSON output")
+    p.set_defaults(func=_cmd_host_workspace)
 
     return parser
 

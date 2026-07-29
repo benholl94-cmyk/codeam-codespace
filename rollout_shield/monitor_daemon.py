@@ -36,6 +36,7 @@ from pathlib import Path
 
 from .alerter import dispatch_alert
 from .health_checks import aggregate, run_all_checks
+from .host_checks import run_host_checks
 from .state import State
 
 
@@ -85,7 +86,11 @@ class Daemon:
     # ---------- one cycle ----------
 
     def run_once(self, cycle: int = 0) -> dict:
+        # Run BOTH the rollout-shield state checks AND the host kernel
+        # checks every cycle. The state checks observe the runtime;
+        # the host checks observe the user's machine + OS.
         results = run_all_checks(self.state, disabled=self.disabled_checks)
+        results += run_host_checks(self.state, disabled=self.disabled_checks)
         summary = aggregate(results)
         self.state.append_health(summary)
         self._write_heartbeat(cycle, summary["status"])

@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# rollout-shield monitor daemon launcher.
+#
+# Starts the monitor as a long-lived background process that survives
+# the shell that launched it. Uses setsid + nohup + a PID file so
+# the daemon can be managed (stop / status / restart) across sessions.
+#
+# Usage:
+#   rollout-shield-daemon-launch            # start in background
+#   rollout-shield-daemon-launch stop       # stop
+#   rollout-shield-daemon-launch status     # check if running + last heartbeat
+#   rollout-shield-daemon-launch restart    # stop + start
+#   rollout-shield-daemon-launch logs       # tail the daemon log
+#
+# State:
+#   ~/.rollout-shield/monitor.pid     PID of the running daemon (or absent)
+#   ~/.rollout-shield/monitor.log     Daemon stderr (rotated by the daemon itself)
+#   ~/.rollout-shield/daemon.json     Heartbeat written by the daemon each cycle
+
+set -euo pipefail
+
+STATE_ROOT="${ROLLOUT_SHIELD_STATE:-$HOME/.rollout-shield}"
+PID_FILE="$STATE_ROOT/monitor.pid"
+LOG_FILE="$STATE_ROOT/monitor.log"
+
+INTERVAL="${ROLLOUT_SHIELD_INTERVAL:-60}"
+DISABLED="${ROLLOUT_SHIELD_DISABLED_CHECKS:-}"
+WEBHOOK="${ROLLOUT_SHIELD_ALERT_WEBHOOK_URL:-}"
+
+mkdir -p "$STATE_ROOT"
+
+cmd="${1:-start}"
+
+is_running() {
+    [[ -f "$PID_FILE" ]] || return 1
+    local pid
+    pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+    [[ -n "$pid" ]] || return 1
+    kill -0 "$pid" 2>/dev/null
+}
+
+start() {
+    if is_running; then
+        echo "rollout-shield monitor: already running (pid $(cat "$PID_FILE"))"
+        return 0
+    fi
+    echo "rollout-shield monitor: starting (interval=${INTERVAL}s, state=${STATE_ROOT})"
+    local args=(--daemon --interval "$INTERVAL")
+    if [[ -n "$DISABLED" ]]; then
+        args+=(--disabled-checks "$DISABLED")
+    fi
+    if [[ -n "$WEBHOOK" ]]; then
+        args+=(--webhook-url "$WEBHOOK")
+    fi
+    # setsid → new session (survives shell exit)
+    # nohup → ignore SIGHUP
+    # >>$LOG_FILE 2>&1 → append to log
+    setsid nohup rollout-shield monitor "${args[@]}" >>"$LOG_FILE" 2>&1 &
+    local pid=$!
+    echo "$pid" > "$PID_FILE"
+    sleep 0.3
+    if is_running; then
+        echo "rollout-shield monitor: started (pid $pid, log $LOG_FILE)"
+    else
+        echo "rollout-shield monitor: FAILED to start (see $LOG_FILE)" >&2
+        return 1
+    fi
+}
+
+stop() {
+    if ! is_running; then
+        echo "rollout-shield monitor: not running"
+        rm -f "$PID_FILE"
+        return 0
+    fi
+    local pid
+    pid="$(cat "$PID_FILE")"
+    echo "rollout-shield monitor: stopping (pid $pid)"
+    kill -TERM "$pid" 2>/dev/null || true
+    for _ in 1 2 3 4 5; do
+        is_running || break
+        sleep 0.5
+    done
+    if is_running; then
+        echo "rollout-shield monitor: did not exit; sending KILL"
+        kill -KILL "$pid" 2>/dev/null || true
+    fi
+    rm -f "$PID_FILE"
+    echo "rollout-shield monitor: stopped"
+}
+
+status() {
+    if is_running; then
+        local pid
+        pid="$(cat "$PID_FILE")"
+        echo "rollout-shield monitor: running (pid $pid)"
+        local hb="$STATE_ROOT/daemon.json"
+        if [[ -f "$hb" ]]; then
+            echo "  heartbeat:"
+            sed 's/^/    /' "$hb"
+        fi
+    else
+        echo "rollout-shield monitor: NOT running"
+        return 1
+    fi
+}
+
+logs() {
+    if [[ -f "$LOG_FILE" ]]; then
+        tail -n 100 -f "$LOG_FILE"
+    else
+        echo "(no log file at $LOG_FILE)"
+        return 1
+    fi
+}
+
+case "$cmd" in
+    start)   start ;;
+    stop)    stop ;;
+    restart) stop || true; start ;;
+    status)  status ;;
+    logs)    logs ;;
+    *)
+        echo "usage: $0 {start|stop|restart|status|logs}" >&2
+        exit 2
+        ;;
+esac
