@@ -1,0 +1,7 @@
+# Default code owners for the codeam-codespace repo.
+# All paths default to the maintainers team. Adjust if a sub-team owns a path.
+# Verification: org is @CodeAgentMobile (from sync.remote URL). If the team
+# @CodeAgentMobile/codeam-maintainers does not exist, replace with a personal
+# handle or create the team in the org first.
+
+* @CodeAgentMobile/codeam-maintainers

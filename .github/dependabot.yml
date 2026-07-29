@@ -1,0 +1,22 @@
+# Dependabot configuration — keeps GitHub Actions versions current.
+# Weekly schedule; groups minor/patch updates; limits open PRs to 3.
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
