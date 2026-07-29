@@ -1,0 +1,60 @@
+# Composite action: install the `bd` (beads) CLI for use in CI jobs.
+# Source of truth for bd installation — consumed by pr-validate, beads-health-report.
+# Install method: official curl installer (documented in .beads/README.md).
+# Fails fast on install error; never silently degrades.
+
+name: "Setup bd (beads CLI)"
+description: "Install the bd CLI for use in CI workflows. Fails fast on install error."
+
+inputs:
+  version:
+    description: "bd version to install (default: latest)"
+    required: false
+    default: "latest"
+  beads-dir:
+    description: "Path to the .beads directory (default: .beads)"
+    required: false
+    default: ".beads"
+
+outputs:
+  bd-version:
+    description: "Installed bd version (from `bd --version`)"
+    value: ${{ steps.install.outputs.bd-version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install bd CLI
+      id: install
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "[setup-bd] installing bd (requested version: '${{ inputs.version }}')"
+        # Official installer (documented in .beads/README.md Z. 64).
+        # Pinned to the upstream repo to avoid supply-chain surprises from
+        # mirror drift; refresh this pin via Dependabot or PR review.
+        curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash
+        # Surface installed version; fail fast if bd is not on PATH.
+        if ! command -v bd >/dev/null 2>&1; then
+          echo "[setup-bd] ERROR: bd not found on PATH after install" >&2
+          exit 1
+        fi
+        BD_VERSION="$(bd --version)"
+        echo "[setup-bd] installed bd: ${BD_VERSION}"
+        echo "bd-version=${BD_VERSION}" >> "$GITHUB_OUTPUT"
+
+    - name: Verify bd can read the repo state
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Sanity check: bd must be able to read metadata. If this fails, the
+        # rest of the job is doomed — fail fast with a clear message.
+        if ! bd --version >/dev/null 2>&1; then
+          echo "[setup-bd] ERROR: bd --version failed after install" >&2
+          exit 1
+        fi
+        if [ ! -d "${{ inputs.beads-dir }}" ]; then
+          echo "[setup-bd] WARNING: ${{ inputs.beads-dir }} not present in checkout — bd commands that need it will fail" >&2
+        else
+          echo "[setup-bd] found ${{ inputs.beads-dir }} in checkout"
+        fi
