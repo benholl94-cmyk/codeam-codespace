@@ -1,5 +1,12 @@
 # rollout-shield
 
+[![version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
+[![python](https://img.shields.io/badge/python-3.11%2B-green.svg)](pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](.github/workflows/tests.yml)
+[![security](https://img.shields.io/badge/security-policy-blueviolet.svg)](.github/SECURITY.md)
+[![bd](https://img.shields.io/badge/issue%20tracker-bd-orange.svg)](https://github.com/gastownhall/beads)
+
 > **repo-safe-rollouts** — verifiable code promotion from merge to production,
 > with cryptographic attribution at every step.
 
@@ -17,6 +24,33 @@ It combines:
 
 See [`BRAND.md`](BRAND.md) for the full brand positioning, voice, and the
 reasoning behind the Hardware+Software framing.
+
+---
+
+## ⚡ quick start
+
+```bash
+# 1. install the runtime into ~/usr/
+git clone <repo>
+cd codeam-codespace
+bash scripts/install.sh
+
+# 2. initialize state at ~/.rollout-shield/
+~/usr/bin/rollout-shield install
+
+# 3. inspect the smart-routing binding (government-version)
+~/usr/bin/rollout-shield routing
+
+# 4. run a one-shot smoke test
+~/usr/bin/rollout-shield self-test
+
+# 5. start the dashboard
+~/usr/bin/rollout-shield dashboard --port 8765
+# open http://127.0.0.1:8765/
+```
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for production deployment
+and [`docs/SECURITY.md`](docs/SECURITY.md) for the threat model.
 
 ---
 
@@ -76,6 +110,13 @@ evidence** that a rollout followed the patterns in `rollout/`.
   `setup.sh` installer, `monitoring/` ops docs). 9 subcommands,
   Ed25519-signed claims, JSON HTTP API + vanilla-JS dashboard,
   daemon-mode monitor with webhook alerts.
+- **Webhook delivery subsystem:** complete
+  (`rollout_shield/webhook_delivery/` package — models, outbox,
+  signer (HMAC + Ed25519), dispatcher with retry/DLQ, dedupe,
+  per-target circuit breaker, replay). `rollout-shield webhooks ...`
+  subcommand tree. `/api/webhooks/*` HTTP API + dashboard `Webhooks`
+  tab. Atomic state at `<state_root>/webhooks/`, advisory fcntl
+  lock, 44 tests. See [`docs/WEBHOOKS.md`](docs/WEBHOOKS.md).
 - **GitHub Actions:** complete (`.github/workflows/` — docs-integrity, triage,
   pr-validate, beads-health-report, monitor-ci; composite action `.github/actions/setup-bd`)
 - **Devcontainer:** maintained (`.devcontainer/devcontainer.json` +

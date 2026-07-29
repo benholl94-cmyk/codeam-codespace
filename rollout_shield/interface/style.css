@@ -210,6 +210,33 @@ tbody td code {
 .sev-error,
 .sev-critical { background: rgba(255, 100, 100, 0.18); color: var(--err); }
 
+/* webhook delivery statuses */
+.wh-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.78em;
+  text-transform: uppercase;
+}
+.wh-pending,
+.wh-in_flight { background: rgba(78, 161, 255, 0.18); color: var(--accent); }
+.wh-delivered { background: rgba(54, 194, 111, 0.18); color: var(--ok); }
+.wh-failed    { background: rgba(243, 181, 58, 0.18); color: var(--warn); }
+.wh-dlq       { background: rgba(255, 100, 100, 0.18); color: var(--err); }
+.wh-cancelled { background: rgba(154, 164, 178, 0.18); color: var(--fg-muted); }
+
+.kv-list > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border, rgba(255,255,255,0.06));
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+.kv-list > div:last-child { border-bottom: none; }
+.kv-list .k { color: var(--fg-muted, #98a4b2); }
+.kv-list .v { color: var(--fg, #e8eef5); font-weight: 600; }
+
 footer {
   display: flex;
   align-items: center;

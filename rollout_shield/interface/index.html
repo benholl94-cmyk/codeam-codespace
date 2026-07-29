@@ -22,6 +22,7 @@
     <button data-tab="alerts">Alerts</button>
     <button data-tab="reputation">Reputation</button>
     <button data-tab="keys">Keys</button>
+    <button data-tab="webhooks">Webhooks</button>
     <a class="tab-link" href="/ai-assistance.html">AI assistance →</a>
   </nav>
 
@@ -91,6 +92,47 @@
       <table id="keys-table">
         <thead>
           <tr><th>id</th><th>agent_id</th><th>algorithm</th><th>fingerprint</th><th>created_at</th><th>hardware_anchored</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="tab-webhooks" class="tab-pane">
+      <h2>Webhook delivery</h2>
+      <p class="muted">Outbound webhook subsystem: outbox + retry/backoff + HMAC + DLQ. Refreshes every 15s.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>Health</h3>
+          <div id="webhook-health" class="big-number">…</div>
+          <div class="muted">outbox depth / DLQ depth / targets</div>
+        </div>
+        <div class="card">
+          <h3>Stats</h3>
+          <div id="webhook-stats" class="kv-list">…</div>
+        </div>
+      </div>
+
+      <h3>Targets</h3>
+      <table id="webhook-targets-table">
+        <thead>
+          <tr><th>name</th><th>url</th><th>sign_mode</th><th>enabled</th><th>paused</th><th>fail_streak</th><th>max_attempts</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>Deliveries</h3>
+      <table id="webhook-deliveries-table">
+        <thead>
+          <tr><th>delivery_id</th><th>target</th><th>status</th><th>attempts</th><th>updated</th><th>last_error</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>DLQ</h3>
+      <p class="muted">Deliveries that exhausted retries. Replay from the CLI: <code>rollout-shield webhooks replay-all --status dlq</code></p>
+      <table id="webhook-dlq-table">
+        <thead>
+          <tr><th>delivery_id</th><th>target</th><th>attempts</th><th>last_error</th></tr>
         </thead>
         <tbody></tbody>
       </table>

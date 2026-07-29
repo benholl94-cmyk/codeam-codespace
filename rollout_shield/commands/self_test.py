@@ -223,6 +223,118 @@ def _step_ai_route(cli: str, state_root: Path) -> dict:
     ))
 
 
+def _step_webhooks(cli: str, state_root: Path) -> dict:
+    """Webhook smoke: spin up a mock receiver, deliver, drain, verify delivered."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    received: list[dict] = []
+    received_lock = threading.Lock()
+
+    class _MockHandler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 — http.server API
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length).decode("utf-8") if length else ""
+            with received_lock:
+                received.append({
+                    "path": self.path,
+                    "headers": dict(self.headers),
+                    "body": body,
+                })
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *_a):  # noqa: N802
+            return
+
+    port = _free_port()
+    server = HTTPServer(("127.0.0.1", port), _MockHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        target_name = "self-test-receiver"
+        target_url = f"http://127.0.0.1:{port}/hook"
+
+        # 1. target add
+        add_step = _run_cli(
+            cli,
+            ["webhooks", "target", "add", target_name, target_url,
+             "--sign-mode", "hmac", "--signing-key", "test-secret"],
+            state_root=state_root,
+        )
+        if not add_step["ok"]:
+            return _step("webhooks target add",
+                         lambda: add_step)["details"] | {"ok": False}
+
+        # 2. deliver
+        payload = json.dumps({"event": "self-test", "uuid": str(uuid.uuid4())})
+        deliver_step = _run_cli(
+            cli,
+            ["webhooks", "deliver", "--target", target_name, "--payload", payload],
+            state_root=state_root,
+        )
+        if not deliver_step["ok"]:
+            return {"ok": False, "stage": "deliver",
+                    "stderr": deliver_step.get("stderr", "")}
+
+        # 3. drain
+        drain_step = _run_cli(
+            cli, ["webhooks", "drain"], state_root=state_root, timeout=15.0,
+        )
+
+        # 4. deliveries list
+        list_step = _run_cli(
+            cli,
+            ["webhooks", "deliveries", "list", "--json"],
+            state_root=state_root,
+        )
+
+        # 5. stats
+        stats_step = _run_cli(
+            cli,
+            ["webhooks", "stats", "--json"],
+            state_root=state_root,
+        )
+
+        # 6. validate
+        with received_lock:
+            count = len(received)
+            last_headers = received[-1]["headers"] if received else {}
+        sig_header = last_headers.get("X-Rollout-Shield-Signature", "")
+        ok = (
+            add_step["ok"]
+            and deliver_step["ok"]
+            and drain_step["ok"]
+            and list_step["ok"]
+            and stats_step["ok"]
+            and count >= 1
+            and sig_header.startswith("sha256=")
+        )
+        return {
+            "ok": ok,
+            "port": port,
+            "received_count": count,
+            "signature": sig_header[:32] + "...",
+            "steps": {
+                "add_rc": add_step["rc"],
+                "deliver_rc": deliver_step["rc"],
+                "drain_rc": drain_step["rc"],
+                "list_rc": list_step["rc"],
+                "stats_rc": stats_step["rc"],
+            },
+            "stats": stats_step["stdout"][:200],
+        }
+    finally:
+        try:
+            server.shutdown()
+            server.server_close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def cmd_self_test(state: State, args: argparse.Namespace) -> int:
     """Run the end-to-end smoke test against a scratch state root."""
     # Determine scratch dir
@@ -286,6 +398,8 @@ def cmd_self_test(state: State, args: argparse.Namespace) -> int:
                                lambda: _step_dashboard_http(cli, scratch)))
 
         steps.append(_step_ai_route(cli, scratch))
+        steps.append(_step("webhooks (mock receiver)",
+                           lambda: _step_webhooks(cli, scratch)))
 
         ok = sum(1 for s in steps if s["ok"])
         fail = sum(1 for s in steps if not s["ok"])

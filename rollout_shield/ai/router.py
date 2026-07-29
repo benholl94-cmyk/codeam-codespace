@@ -197,7 +197,7 @@ def route(prompt: str,
     selected_id, selected_text = _select(strategy, prompt, outputs,
                                          benchmark_scores=benchmark_scores or {})
 
-    return RouteTrace(
+    trace = RouteTrace(
         ts=int(time.time()),
         prompt=prompt,
         prompt_digest=_digest_prompt(prompt),
@@ -209,3 +209,33 @@ def route(prompt: str,
         elapsed_ms=elapsed_ms,
         parallel_speedup=parallel_speedup,
     )
+
+    # --- metrics: emit per-call signals (best-effort, never crash) ---
+    try:
+        from .. import metrics
+        per_model_cost = {
+            o["model_id"]: float(info_by_id[o["model_id"]].cost_per_1k_tokens)
+            for o in outputs if o.get("ok")
+        }
+        # token count is approximate; we don't bill on failures
+        approx_tokens = {
+            o["model_id"]: int(o["output"].get("tokens", 0))
+            for o in outputs if o.get("ok")
+        }
+        # convert per-1k cost into a call cost
+        per_call_cost = {
+            mid: (per_model_cost.get(mid, 0.0)
+                  * approx_tokens.get(mid, 0) / 1000.0)
+            for mid in per_model_cost
+        }
+        metrics.record_router_call(
+            strategy=strategy,
+            n_models=len(selected_models),
+            elapsed_s=elapsed_ms / 1000.0,
+            per_model_cost=per_call_cost,
+        )
+    except Exception:  # noqa: BLE001
+        # metrics are observability — never break the router
+        pass
+
+    return trace

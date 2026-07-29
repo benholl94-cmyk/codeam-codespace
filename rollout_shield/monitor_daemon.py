@@ -152,6 +152,12 @@ class Daemon:
                 "summary": summary,
             }
             dispatch_alert(self.state, alert, webhook_url=self.webhook_url)
+        # Drain the webhook outbox once per cycle (best-effort; never fails the cycle)
+        try:
+            from .webhook_delivery.dispatcher import run_once as webhook_run_once
+            webhook_run_once(self.state)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[daemon] webhook drain raised: {exc}", file=sys.stderr)
         # Closed-loop: periodically attempt repairs
         self._maybe_self_heal(cycle, summary)
         return summary

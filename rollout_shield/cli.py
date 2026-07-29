@@ -175,6 +175,34 @@ def _cmd_routing(args: argparse.Namespace) -> int:
     return cmd_routing(state, args)
 
 
+def _cmd_plugin(args: argparse.Namespace) -> int:
+    """Plugin management (list / show / activate / deactivate / discover / run)."""
+    from .commands.plugins import cmd_plugin
+    state = State(root=args.state_root)
+    return cmd_plugin(state, args)
+
+
+def _cmd_skill(args: argparse.Namespace) -> int:
+    """Skill management (list / show / warm / invoke)."""
+    from .commands.plugins import cmd_skill
+    state = State(root=args.state_root)
+    return cmd_skill(state, args)
+
+
+def _cmd_metrics(args: argparse.Namespace) -> int:
+    """Print the Prometheus-format metrics snapshot."""
+    from . import metrics
+    sys.stdout.write(metrics.render())
+    return 0
+
+
+def _cmd_webhooks(args: argparse.Namespace) -> int:
+    """Webhook delivery subsystem (outbox + retry + sign + DLQ)."""
+    from .commands.webhooks import cmd_webhooks
+    state = State(root=args.state_root)
+    return cmd_webhooks(state, args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Common args available on every subcommand. Using `parents=` makes
     # argparse pass them through to subparsers as if they were defined
@@ -422,6 +450,77 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--routing-json", dest="routing_json",
                    action="store_true")
     p.set_defaults(func=_cmd_routing)
+
+    # plugin — manage extension plugins
+    p = sub.add_parser(
+        "plugin",
+        help="manage extension plugins (discover / activate / deactivate / run)",
+        parents=[common],
+    )
+    sub_plugin = p.add_subparsers(dest="plugin_command", required=False)
+    pa = sub_plugin.add_parser("list", help="list discovered plugins",
+                                parents=[common])
+    pa.set_defaults(plugin_command="list")
+    pa = sub_plugin.add_parser("show", help="show a plugin manifest",
+                                parents=[common])
+    pa.add_argument("plugin_id")
+    pa.set_defaults(plugin_command="show")
+    pa = sub_plugin.add_parser("activate", help="activate a plugin",
+                                parents=[common])
+    pa.add_argument("plugin_id")
+    pa.set_defaults(plugin_command="activate")
+    pa = sub_plugin.add_parser("deactivate", help="deactivate a plugin",
+                                parents=[common])
+    pa.add_argument("plugin_id")
+    pa.set_defaults(plugin_command="deactivate")
+    pa = sub_plugin.add_parser("discover",
+                                help="re-walk discovery paths",
+                                parents=[common])
+    pa.set_defaults(plugin_command="discover")
+    pa = sub_plugin.add_parser("run",
+                                help="dispatch an event to a plugin",
+                                parents=[common])
+    pa.add_argument("plugin_id")
+    pa.add_argument("event")
+    pa.add_argument("--param", action="append", default=[],
+                    help="key=value (repeatable)")
+    pa.set_defaults(plugin_command="run")
+    p.set_defaults(func=_cmd_plugin)
+
+    # skill — manage AI-layer skills
+    p = sub.add_parser(
+        "skill",
+        help="manage AI-layer skills (list / warm / invoke)",
+        parents=[common],
+    )
+    sub_skill = p.add_subparsers(dest="skill_command", required=False)
+    pa = sub_skill.add_parser("list", help="list skills", parents=[common])
+    pa.set_defaults(skill_command="list")
+    pa = sub_skill.add_parser("show", help="show a skill", parents=[common])
+    pa.add_argument("skill_id")
+    pa.set_defaults(skill_command="show")
+    pa = sub_skill.add_parser("warm", help="warm staged skills",
+                                parents=[common])
+    pa.set_defaults(skill_command="warm")
+    pa = sub_skill.add_parser("invoke", help="invoke a skill",
+                                parents=[common])
+    pa.add_argument("skill_id")
+    pa.add_argument("prompt", nargs="+")
+    pa.add_argument("--param", action="append", default=[],
+                    help="key=value (repeatable)")
+    pa.set_defaults(skill_command="invoke")
+    p.set_defaults(func=_cmd_skill)
+
+    # metrics — show the Prometheus-format metric snapshot
+    p = sub.add_parser(
+        "metrics", help="render the Prometheus-format metrics snapshot",
+        parents=[common],
+    )
+    p.set_defaults(func=_cmd_metrics)
+
+    # webhooks — outbound webhook delivery subsystem (outbox + retry + sign + DLQ)
+    from .commands.webhooks import build_parser as _webhooks_build_parser
+    _webhooks_build_parser(sub)
 
     return parser
 

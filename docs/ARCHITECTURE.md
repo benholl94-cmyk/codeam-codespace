@@ -87,6 +87,55 @@ content into `~/usr/` (the host prefix) and never touches the source
 tree. State at `~/.rollout-shield/` lives on the host and is never
 in the repo.
 
+## webhook delivery subsystem
+
+A dedicated subsystem at `rollout_shield/webhook_delivery/`
+delivers outbound webhooks durably:
+
+```
+                       producer (alerter, dashboard, CLI, monitor)
+                                       │
+                                       ▼
+                rollout_shield/webhook_delivery/outbox.py
+                  │ atomic per-record write to
+                  │ <state_root>/webhooks/deliveries/<id>.json
+                  │ + append to outbox/<date>.jsonl event log
+                  ▼
+                rollout_shield/webhook_delivery/dedupe.py
+                  │ per-target idempotency window coalescing
+                  ▼
+                rollout_shield/webhook_delivery/dispatcher.py
+                  │ advisory fcntl/msvcrt lock
+                  │ signer.build_headers() ─► HMAC | Ed25519 | none
+                  │ urllib POST (configurable timeout)
+                  │ retry: 1, 4, 16, 64, 256 s (5 attempts) → DLQ
+                  ▼
+                <state_root>/webhooks/
+                  deliveries/<id>.json     snapshots (atomic-write)
+                  dlq/<id>.json            dead-letter
+                  stats.json               rolled counters
+                  outbox/<date>.jsonl      append-only event audit
+```
+
+CLI surface (`rollout-shield webhooks ...`): `target add/list/show/
+remove`, `deliver`, `deliveries list/show`, `replay`, `replay-all`,
+`drain`, `stats`, `sign-test`, `daemon`.
+
+HTTP API (`/api/webhooks/*`): `targets`, `deliver`, `deliveries`,
+`replay`, `stats`, `health`, `sign-test`.
+
+Dashboard: `Webhooks` tab polls every 15s.
+
+Observability: 5 new Prometheus families under
+`rollout_shield_webhook_*`; plugin event `webhook.delivered` for
+downstream subscribers.
+
+Tests: `tests/test_unit_webhook_delivery.py` (35) +
+`tests/test_integration_webhook_delivery.py` (9) +
+`tests/test_smoke_webhooks.py` (3, marked `@pytest.mark.smoke`).
+
+Detail: [`docs/WEBHOOKS.md`](WEBHOOKS.md).
+
 ## controller policy
 
 A single config field (`controller_policy`) declares who is allowed

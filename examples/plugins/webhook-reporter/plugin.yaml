@@ -1,0 +1,17 @@
+id: webhook-reporter
+name: Webhook Reporter
+version: 0.1.0
+description: Posts a structured JSON payload to a webhook on every claim verify.
+module: webhook_reporter
+hooks:
+  - claim_verify
+  - monitor_cycle
+commands:
+  - name: status
+    help: show the last webhook delivery status
+permissions:
+  - read:claims
+  - read:state
+meta:
+  author: example-author
+  homepage: https://example.invalid

@@ -155,6 +155,78 @@
     }
   }
 
+  async function renderWebhooks() {
+    const [health, statsData, targetsData, deliveriesData, dlqData] = await Promise.all([
+      fetchJSON("/api/webhooks/health"),
+      fetchJSON("/api/webhooks/stats"),
+      fetchJSON("/api/webhooks/targets"),
+      fetchJSON("/api/webhooks/deliveries?limit=100"),
+      fetchJSON("/api/webhooks/deliveries?status=dlq&limit=50"),
+    ]);
+    $("#webhook-health").textContent =
+      `${health.outbox_depth} pending / ${health.dlq_depth} dlq / ${health.targets_count} targets`;
+
+    const statsEl = $("#webhook-stats");
+    statsEl.innerHTML = "";
+    const order = ["enqueued_total", "delivered_total", "failed_total",
+                   "dlq_total", "replayed_total", "outbox_depth", "dlq_depth"];
+    for (const k of order) {
+      if (statsData[k] === undefined) continue;
+      const row = document.createElement("div");
+      row.innerHTML = `<span class="k">${k}</span><span class="v">${statsData[k]}</span>`;
+      statsEl.appendChild(row);
+    }
+
+    // targets table
+    const targetsBody = $("#webhook-targets-table tbody");
+    targetsBody.innerHTML = "";
+    for (const t of (targetsData.targets || [])) {
+      const paused = (t.paused_until || 0) > Math.floor(Date.now() / 1000);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><code>${escapeHtml(t.name)}</code></td>
+        <td><code>${escapeHtml((t.url || "").slice(0, 60))}</code></td>
+        <td>${escapeHtml(t.sign_mode || "none")}</td>
+        <td>${t.enabled ? "yes" : "no"}</td>
+        <td>${paused ? "yes" : "no"}</td>
+        <td>${t.fail_streak || 0}</td>
+        <td>${t.max_attempts || 6}</td>
+      `;
+      targetsBody.appendChild(tr);
+    }
+
+    // deliveries table
+    const deliveriesBody = $("#webhook-deliveries-table tbody");
+    deliveriesBody.innerHTML = "";
+    for (const r of (deliveriesData.deliveries || []).slice(0, 100)) {
+      const tr = document.createElement("tr");
+      const status = r.status || "unknown";
+      tr.innerHTML = `
+        <td><code>${escapeHtml(r.delivery_id)}</code></td>
+        <td>${escapeHtml(r.target_name || "")}</td>
+        <td><span class="wh-status wh-${escapeHtml(status)}">${escapeHtml(status)}</span></td>
+        <td>${r.attempt_count || 0}</td>
+        <td>${formatTs(r.updated_at)}</td>
+        <td><code title="${escapeHtml(r.last_error || "")}">${escapeHtml((r.last_error || "").slice(0, 60))}</code></td>
+      `;
+      deliveriesBody.appendChild(tr);
+    }
+
+    // DLQ table
+    const dlqBody = $("#webhook-dlq-table tbody");
+    dlqBody.innerHTML = "";
+    for (const r of (dlqData.deliveries || [])) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><code>${escapeHtml(r.delivery_id)}</code></td>
+        <td>${escapeHtml(r.target_name || "")}</td>
+        <td>${r.attempt_count || 0}</td>
+        <td><code title="${escapeHtml(r.last_error || "")}">${escapeHtml((r.last_error || "").slice(0, 80))}</code></td>
+      `;
+      dlqBody.appendChild(tr);
+    }
+  }
+
   // -------- utils --------
 
   function escapeHtml(s) {
@@ -176,7 +248,10 @@
   async function refreshAll() {
     try {
       await renderOverview();
-      await Promise.all([renderClaims(), renderAlerts(), renderReputation(), renderKeys()]);
+      await Promise.all([
+        renderClaims(), renderAlerts(), renderReputation(),
+        renderKeys(), renderWebhooks(),
+      ]);
     } catch (exc) {
       console.error("refresh failed:", exc);
     }
