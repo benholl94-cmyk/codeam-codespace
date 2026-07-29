@@ -1,0 +1,66 @@
+name: rollout-shield monitor (CI)
+
+on:
+  schedule:
+    # Run every 6 hours, off the hour to avoid fleet thundering herds
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monitor-once:
+    name: one-shot health report
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install runtime dep
+        run: pip install cryptography
+
+      - name: Make CLI executable
+        run: chmod +x bin/rollout-shield
+
+      - name: Initialize state + default key
+        run: |
+          python -m rollout_shield install
+
+      - name: Self-check
+        run: |
+          python -m rollout_shield self-check --json | tee self-check.json
+
+      - name: One-shot monitor cycle
+        id: monitor
+        run: |
+          python -m rollout_shield monitor --once --json | tee monitor.json
+
+      - name: Emit a synthetic test claim
+        run: |
+          python -m rollout_shield claim create \
+            --agent-id default \
+            --type change \
+            --body 'monitor-ci synthetic change claim' || true
+
+      - name: Verify the synthetic claim
+        run: |
+          CLM_ID=$(python -m rollout_shield claim list --json | python -c "import sys, json; data=json.load(sys.stdin); print(data['claims'][-1]['id'])")
+          echo "verifying $CLM_ID"
+          python -m rollout_shield verify "$CLM_ID" --json
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rollout-shield-monitor-${{ github.run_id }}
+          path: |
+            self-check.json
+            monitor.json
+          if-no-files-found: ignore
