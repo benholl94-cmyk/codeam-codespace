@@ -32,6 +32,7 @@ The managed Beads block is task-tracking guidance, not permission to override re
 - **Minimal**: Keep tool instruction files as pointers to `bd prime`; use the same conservative git policy unless active instructions say otherwise.
 - **Team-maintainer**: Only when the repository explicitly opts in, agents may close beads, run quality gates, commit, and push as part of session close. A current "do not commit" or "do not push" instruction still wins.
 - **CI scheduled jobs** (e.g., `.github/workflows/beads-health-report.yml`): read-only health checks. They MUST NOT run `bd dolt pull` or `bd dolt push` automatically — sync is reserved for explicit, manually-triggered runs.
+- **Standalone-canonical mode** (default for this workspace): upstream `origin` may not be writable from the codespace's authenticated identity. In that case, `.beads/config.yaml` has `sync.remote: ""` (disabled) and all work lives locally. To publish, either (a) point a personal fork at the workspace via `scripts/setup-fork.sh FORK_OWNER=<you>`, or (b) export a portable bundle via `scripts/export-state.sh`. See `scripts/README.md` (if present) or the script headers for restore steps.
 
 ## Session Completion
 

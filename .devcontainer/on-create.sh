@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # onCreateCommand: per-workspace setup on the prebaked image. Values are provided
 # by the platform at create time as environment/secrets (never committed).
+#
+# Standalone-canonical mode (default):
+#   - REPO_URL unset → no clone. Workspace stays as the dev container itself.
+#   - REPO_URL set → clone the given URL into WORK. Use a personal-fork URL
+#     (e.g., git@github.com:<you>/codeam-codespace.git) when the codespace's
+#     authenticated user lacks push rights on the upstream repo. See
+#     scripts/setup-fork.sh for an idempotent helper that aligns git origin
+#     and .beads/config.yaml sync.remote.
 set -uo pipefail
 log() { echo "[on-create] $*"; }
 
