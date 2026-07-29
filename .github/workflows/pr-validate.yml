@@ -1,0 +1,176 @@
+# pr-validate.yml — runs bd validation + devcontainer schema check on PRs.
+# Read-mostly: only writes one idempotent comment on the PR on failure.
+#
+# Trigger: pull_request opened/synchronize/reopened/edited, paths-filtered so
+# noise commits (README typo fixes, .gitignore tweaks, etc.) do not burn CI.
+# Skip:   draft PRs (drafts can be WIP and not yet ready for review signal).
+# Safety: uses `pull_request` (NOT `pull_request_target`) so fork PRs are safe
+# (no secrets exposed; runs from PR head SHA).
+#
+# Side effects: posts ONE comment per PR per run, keyed by tag for idempotency.
+
+name: pr-validate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    paths:
+      - ".devcontainer/**"
+      - "CLAUDE.md"
+      - ".beads/**"
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/ISSUE_TEMPLATE/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  bd-checks:
+    name: bd validation
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup bd CLI
+        uses: ./.github/actions/setup-bd
+
+      - name: Run bd doctor
+        id: doctor
+        shell: bash
+        run: |
+          set -uo pipefail
+          # bd doctor may exit non-zero on warnings — capture stdout for the
+          # failure comment but do not fail the step yet.
+          OUT="$(bd doctor 2>&1)" && RC=$? || RC=$?
+          echo "bd-doctor-output<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${OUT}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "bd-doctor-rc=${RC}" >> "$GITHUB_OUTPUT"
+          echo "::group::bd doctor output"
+          echo "${OUT}"
+          echo "::endgroup::"
+          if [ "${RC}" -ne 0 ]; then
+            echo "::warning::bd doctor exited with rc=${RC}"
+          fi
+
+      - name: Run bd lint
+        id: lint
+        shell: bash
+        run: |
+          set -uo pipefail
+          OUT="$(bd lint 2>&1)" && RC=$? || RC=$?
+          echo "bd-lint-output<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${OUT}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "bd-lint-rc=${RC}" >> "$GITHUB_OUTPUT"
+          echo "::group::bd lint output"
+          echo "${OUT}"
+          echo "::endgroup::"
+          if [ "${RC}" -ne 0 ]; then
+            echo "::warning::bd lint exited with rc=${RC}"
+          fi
+
+      - name: Run bd orphans
+        id: orphans
+        shell: bash
+        run: |
+          set -uo pipefail
+          OUT="$(bd orphans 2>&1)" && RC=$? || RC=$?
+          echo "bd-orphans-output<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${OUT}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "bd-orphans-rc=${RC}" >> "$GITHUB_OUTPUT"
+          echo "::group::bd orphans output"
+          echo "${OUT}"
+          echo "::endgroup::"
+          if [ "${RC}" -ne 0 ]; then
+            echo "::warning::bd orphans exited with rc=${RC}"
+          fi
+
+  schema-check:
+    name: devcontainer.json schema check
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate devcontainer.json against JSON Schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f .devcontainer/devcontainer.json ]; then
+            echo "::error::.devcontainer/devcontainer.json not found"
+            exit 1
+          fi
+          # Fetch the published devcontainer JSON Schema.
+          SCHEMA_URL="https://json.schemastore.org/devcontainer.json"
+          TMP_SCHEMA="$(mktemp)"
+          if ! curl -fsSL "${SCHEMA_URL}" -o "${TMP_SCHEMA}"; then
+            echo "::warning::Could not fetch schema from ${SCHEMA_URL}; falling back to JSON-parse only"
+            rm -f "${TMP_SCHEMA}"
+            python3 -c "import json,sys; json.load(open('.devcontainer/devcontainer.json'))" \
+              && echo "OK: devcontainer.json is valid JSON"
+            exit 0
+          fi
+          # Validate using python3 + jsonschema if available; else fall back.
+          python3 - <<'PY'
+          import json, sys, urllib.request, os, tempfile
+          schema_url = os.environ["SCHEMA_URL"]
+          try:
+              import jsonschema  # type: ignore
+          except ImportError:
+              print("::warning::jsonschema not installed; pip-installing")
+              import subprocess
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "jsonschema"])
+              import jsonschema  # type: ignore
+          with urllib.request.urlopen(schema_url) as f:
+              schema = json.load(f)
+          with open(".devcontainer/devcontainer.json") as f:
+              doc = json.load(f)
+          try:
+              jsonschema.validate(instance=doc, schema=schema)
+              print("OK: devcontainer.json validates against schema")
+          except jsonschema.ValidationError as e:
+              print(f"::error::Schema validation failed: {e.message}")
+              print(f"  path: {list(e.absolute_path)}")
+              sys.exit(1)
+          PY
+
+  comment:
+    name: Post PR comment if any check failed
+    runs-on: ubuntu-latest
+    needs: [bd-checks, schema-check]
+    if: |
+      github.event.pull_request.draft == false &&
+      (
+        needs.bd-checks.outputs.doctor-rc != '0' ||
+        needs.bd-checks.outputs.lint-rc != '0' ||
+        needs.bd-checks.outputs.orphans-rc != '0' ||
+        needs.schema-check.result != 'success'
+      )
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Post / update idempotent failure comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          edit-mode: replace
+          comment-tag: pr-validate-failure
+          body: |
+            ⚠️ **pr-validate** found issues — please review before merging.
+
+            | Check | Status |
+            |---|---|
+            | `bd doctor` | `${{ needs.bd-checks.outputs.doctor-rc == '0' && '✅' || '❌' }}` |
+            | `bd lint`    | `${{ needs.bd-checks.outputs.lint-rc    == '0' && '✅' || '❌' }}` |
+            | `bd orphans` | `${{ needs.bd-checks.outputs.orphans-rc == '0' && '✅' || '❌' }}` |
+            | `devcontainer.json` schema | `${{ needs.schema-check.result == 'success' && '✅' || '❌' }}` |
+
+            See the Actions run for full output. This comment updates in place on re-runs.
