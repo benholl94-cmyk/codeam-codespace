@@ -168,6 +168,13 @@ def _cmd_ai(args: argparse.Namespace) -> int:
     return cmd_ai(state, args)
 
 
+def _cmd_routing(args: argparse.Namespace) -> int:
+    """Top-level routing alias — delegates to ``ai routing``."""
+    from .commands.ai import cmd_routing
+    state = State(root=args.state_root)
+    return cmd_routing(state, args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Common args available on every subcommand. Using `parents=` makes
     # argparse pass them through to subparsers as if they were defined
@@ -392,7 +399,29 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("--port", type=int, default=8765)
     pa.add_argument("--open", action="store_true")
     pa.set_defaults(ai_command="dashboard")
-    p.set_defaults(func=_cmd_ai)
+    # ai routing — show the smart-routing binding (government-version manifest)
+    pa = sub_ai.add_parser(
+        "routing", help="show the smart-routing binding manifest",
+        parents=[common],
+    )
+    pa.add_argument("--profile", default=None,
+                    help="controller policy to show profile for "
+                         "(shared | device-only | human-only)")
+    pa.add_argument("--routing-json", dest="routing_json",
+                    action="store_true",
+                    help="emit raw JSON manifest")
+    pa.set_defaults(ai_command="routing")
+
+    # top-level `routing` alias (shortcut for `ai routing`)
+    p = sub.add_parser(
+        "routing",
+        help="show the smart-routing binding manifest (alias for `ai routing`)",
+        parents=[common],
+    )
+    p.add_argument("--profile", default=None)
+    p.add_argument("--routing-json", dest="routing_json",
+                   action="store_true")
+    p.set_defaults(func=_cmd_routing)
 
     return parser
 

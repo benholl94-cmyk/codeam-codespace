@@ -1,0 +1,51 @@
+# Minimal k8s sidecar deployment for the App-controlled Space.
+#
+# The main container runs the user's workload. The sidecar runs the
+# rollout-shield monitor as a long-lived process. The device's
+# hardware-anchored key is mounted from a Secret (replace with a CSI
+# volume for TPM/HSM-backed keys).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rollout-shield-sidecar-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workload
+  template:
+    metadata:
+      labels:
+        app: workload
+    spec:
+      containers:
+        - name: workload
+          image: my-workload:latest
+          env:
+            - name: ROLLOUT_SHIELD_STATE
+              value: /var/lib/rollout-shield
+        - name: rollout-shield
+          image: rollout-shield:latest
+          env:
+            - name: ROLLOUT_SHIELD_STATE
+              value: /var/lib/rollout-shield
+            - name: ROLLOUT_SHIELD_INTERVAL
+              value: "60"
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/rollout-shield
+            - name: device-key
+              mountPath: /var/lib/rollout-shield/keys_material
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+      volumes:
+        - name: state
+          emptyDir: {}
+        - name: device-key
+          secret:
+            secretName: rollout-shield-device-key
+      restartPolicy: Always

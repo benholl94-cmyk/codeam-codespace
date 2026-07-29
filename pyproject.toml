@@ -1,0 +1,105 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rollout-shield"
+version = "0.1.0"
+description = "Hardware+software platform for repo-safe-rollouts (CLI + daemon + AI layer)"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [
+  { name = "codeam", email = "ops@codeam.example" },
+]
+keywords = [
+  "rollout",
+  "deployment",
+  "claims",
+  "verification",
+  "ed25519",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: System :: Monitoring",
+]
+
+# runtime dependencies: stdlib-only by default.
+# cryptography is only required for actual signing/verifying,
+# so it's optional — the CLI runs without it for non-crypto ops.
+dependencies = []
+
+[project.optional-dependencies]
+crypto = ["cryptography>=41.0"]
+dev = [
+  "pytest>=7.4",
+  "pytest-cov>=4.1",
+  "ruff>=0.4",
+  "mypy>=1.8",
+  "build>=1.0",
+]
+
+[project.scripts]
+rollout-shield = "rollout_shield.cli:main"
+rollout-shield-monitor = "rollout_shield.monitor_daemon:main"
+
+[project.urls]
+Repository = "https://github.com/CodeAgentMobile/codeam-codespace"
+Issues = "https://github.com/CodeAgentMobile/codeam-codespace/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["rollout_shield"]
+
+[tool.hatch.version]
+path = "rollout_shield/__init__.py"
+
+# ---------- tool config ----------
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["build", "dist", ".venv", "*.egg-info"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "UP",  # pyupgrade
+]
+ignore = ["E501"]  # line-length is set explicitly; long lines allowed
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]  # asserts are fine in tests
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true
+exclude = ["build/", "dist/", ".venv/"]
+
+[tool.pytest.ini_options]
+minversion = "7.4"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "smoke: fast smoke tests (< 5s)",
+  "slow: slow tests (> 5s)",
+  "integration: end-to-end integration tests",
+  "security: security-sensitive tests",
+  "requires_cryptography: tests that need the [crypto] extra installed",
+]

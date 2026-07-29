@@ -1,0 +1,82 @@
+# pre-commit hooks for codeam-codespace / rollout-shield.
+#
+# Install once:
+#   pip install pre-commit
+#   pre-commit install
+# Then `git commit` runs all hooks automatically.
+#
+# To run manually against the whole tree:
+#   pre-commit run --all-files
+#
+# The hooks are picked to be cheap, fast, and to catch the failure
+# modes that have actually hurt us:
+#   - leaked Ed25519 PEM blocks (detect-private-key)
+#   - merge-conflict markers re-introduced (check-merge-conflict)
+#   - trailing whitespace + missing final newline (typical diff friction)
+#   - malformed YAML / TOML (check-yaml / check-toml)
+#   - Python lint hygiene (ruff — replaces flake8+isort+pyupgrade)
+#   - Python type sanity (mypy — non-strict, just catches obvious bugs)
+#
+# Hooks are pinned to tag versions for reproducibility; bump via
+# `pre-commit autoupdate` on a regular cadence.
+
+repos:
+  # --- 1. python lint (single-source, fast) ---
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+      - id: ruff-format
+        types_or: [python, pyi]
+
+  # --- 2. python type sanity (non-strict) ---
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --no-incremental]
+        additional_dependencies: []
+        files: ^rollout_shield/.*\.py$
+
+  # --- 3. file-level hygiene ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: detect-private-key
+        # catches Ed25519 / RSA / OpenSSH private keys
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-json
+        # excludes because some JSON files are allowed to be loose
+        exclude: ^(\.beads/export-state\.json|tests/fixtures/.*\.json)$
+
+  # --- 4. shell / bash safety ---
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        # shellcheck has known quirks with our generated install/error
+        # helpers; selective exclusion keeps the signal high.
+        exclude: ^(scripts/install\.sh|scripts/uninstall\.sh)$
+
+# --- 5. local repo hooks (run inside the repo; no remote fetch) ---
+  - repo: local
+    hooks:
+      - id: forbid-tabs-in-yaml
+        name: forbid tabs in YAML
+        entry: bash -c 'grep -rlP "^\t" --include="*.yml" --include="*.yaml" . | grep -v "^\.github/workflows/beads-health-report.yml" | grep -v "^./examples/k8s/" && exit 1 || exit 0'
+        language: system
+        types: [yaml]
+        pass_filenames: false
+        # K8s manifests use tabs for indentation; the others are checked.

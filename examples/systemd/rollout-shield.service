@@ -1,0 +1,14 @@
+[Unit]
+Description=rollout-shield persistent monitor
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/usr/bin/rollout-shield-monitor --daemon --foreground --interval 60
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

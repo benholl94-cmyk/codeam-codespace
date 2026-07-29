@@ -52,6 +52,15 @@ done
 log() { printf '[install] %s\n' "$*" >&2; }
 fail() { printf '[install] FAIL: %s\n' "$*" >&2; exit 1; }
 
+# number of parallel cp workers — default to CPU count when available,
+# capped at 8 (more rarely helps; mostly metadata-bound).
+N_PARALLEL="${INSTALL_PARALLEL:-8}"
+if command -v nproc >/dev/null 2>&1; then
+  N_PARALLEL="$(nproc)"
+fi
+[[ "$N_PARALLEL" -gt 8 ]] && N_PARALLEL=8
+[[ "$N_PARALLEL" -lt 1 ]] && N_PARALLEL=1
+
 [[ -d "$REPO_ROOT/rollout_shield" ]] || fail "rollout_shield/ not found at $REPO_ROOT"
 [[ -d "$REPO_ROOT/rollout_shield/interface" ]] || fail "interface assets missing"
 
@@ -61,18 +70,69 @@ mkdir -p "$PREFIX/share/rollout-shield"
 mkdir -p "$PREFIX/etc/rollout-shield"
 
 log "prefix: $PREFIX"
+log "parallel workers: $N_PARALLEL"
 
 # --- 1. Copy the Python package (real copy, not symlink) ---
+# Speed: parallel cp via xargs -P, --reflink=auto for CoW support,
+# find -P skips __pycache__ / .pyc / cache dirs at the source.
+# Strategy: create all destination directories in one pass (sequential),
+# then fan out file copies in parallel.
 log "copying rollout_shield/ → $PREFIX/lib/python/rollout_shield/"
 rm -rf "$PREFIX/lib/python/rollout_shield"
-cp -a "$REPO_ROOT/rollout_shield" "$PREFIX/lib/python/rollout_shield"
-# strip pyc caches
-find "$PREFIX/lib/python/rollout_shield" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+mkdir -p "$PREFIX/lib/python/rollout_shield"
+START_NS=$(date +%s%N)
+# 1a. directory tree (cheap, sequential)
+( cd "$REPO_ROOT" && \
+  find rollout_shield \
+    -type d \( -name __pycache__ -o -name .mypy_cache -o -name .pytest_cache -o -name .ruff_cache \) -prune -o \
+    -type d -print ) \
+  | while read -r d; do
+      mkdir -p "$PREFIX/lib/python/$d"
+    done
+# 1b. files only, fanned out across N_PARALLEL workers
+( cd "$REPO_ROOT" && \
+  find rollout_shield \
+    -type d \( -name __pycache__ -o -name .mypy_cache -o -name .pytest_cache -o -name .ruff_cache \) -prune -o \
+    -type f \( -name '*.pyc' -o -name '*.pyo' \) -prune -o \
+    -type f -print ) \
+  | xargs -P "$N_PARALLEL" -I {} \
+    cp -a --reflink=auto "$REPO_ROOT/{}" "$PREFIX/lib/python/{}"
+END_NS=$(date +%s%N)
+log "copy done in $(( (END_NS - START_NS) / 1000000 )) ms"
 
-# --- 2. Copy the interface assets ---
+# --- 2. Copy the interface assets (parallel, same exclusions) ---
+# Strip the leading "rollout_shield/" prefix so the destination layout
+# is $PREFIX/share/rollout-shield/interface/ — not .../rollout_shield/interface/.
 log "copying interface/ → $PREFIX/share/rollout-shield/interface/"
 rm -rf "$PREFIX/share/rollout-shield/interface"
-cp -a "$REPO_ROOT/rollout_shield/interface" "$PREFIX/share/rollout-shield/interface"
+START_NS=$(date +%s%N)
+( cd "$REPO_ROOT" && \
+  find rollout_shield/interface \
+    -type d \( -name __pycache__ -o -name .mypy_cache -o -name .pytest_cache \) -prune -o \
+    -type d -print ) \
+  | while read -r d; do
+      # strip "rollout_shield/" prefix
+      rel="${d#rollout_shield/}"
+      mkdir -p "$PREFIX/share/rollout-shield/$rel"
+    done
+( cd "$REPO_ROOT" && \
+  find rollout_shield/interface \
+    -type d \( -name __pycache__ -o -name .mypy_cache -o -name .pytest_cache \) -prune -o \
+    -type f -print ) \
+  | xargs -P "$N_PARALLEL" -I {} \
+    sh -c 'rel="${1#rollout_shield/}"; cp -a --reflink=auto "$1" "$2/$rel"' _ {} "$PREFIX/share/rollout-shield"
+END_NS=$(date +%s%N)
+log "copy done in $(( (END_NS - START_NS) / 1000000 )) ms"
+
+# --- 2b. Pre-compile .pyc files (warm cache for the daemon + dashboard) ---
+# Stdlib only — uses compileall. Idempotent: re-running overwrites.
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+if command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  log "pre-compiling .pyc → $PREFIX/lib/python/rollout_shield/"
+  "$PYTHON_BIN" -m compileall -q -j "$N_PARALLEL" \
+    "$PREFIX/lib/python/rollout_shield" 2>/dev/null || \
+    log "pre-compile skipped (compileall failed)"
+fi
 
 # --- 3. Copy the CLI entry scripts (rewritten shims) ---
 log "writing CLI shims → $PREFIX/bin/"
@@ -95,12 +155,17 @@ _PKG_PARENT = _PREFIX / "lib" / "python"
 _REPO_PKG_PARENT = Path("$REPO_ROOT").expanduser()
 
 # Search order:
-#   1. ~/usr/lib/python  (this install)
-#   2. <repo>/rollout_shield  (dev fallback when running from the repo)
-for parent in (_PKG_PARENT, _REPO_PKG_PARENT):
-    pstr = str(parent)
-    if pstr not in sys.path and (parent / "rollout_shield").is_dir():
-        sys.path.insert(0, pstr)
+#   1. ~/usr/lib/python  (this install — wins)
+#   2. <repo>/rollout_shield  (dev fallback, appended AFTER the install)
+# Insert the install at index 0 FIRST so it shadows the repo source.
+if (_PKG_PARENT / "rollout_shield").is_dir():
+    sys.path.insert(0, str(_PKG_PARENT))
+# The repo fallback is appended (NOT inserted at 0) so the install
+# always wins for duplicate module names.
+if (_REPO_PKG_PARENT / "rollout_shield").is_dir():
+    repo_str = str(_REPO_PKG_PARENT)
+    if repo_str not in sys.path:
+        sys.path.append(repo_str)
 
 try:
     from rollout_shield.$target_module import main
@@ -161,6 +226,52 @@ EOF
 date -u +%Y-%m-%dT%H:%M:%SZ > "$PREFIX/INSTALLED_AT"
 echo "$REPO_ROOT" > "$PREFIX/REPO_SOURCE"
 
+# --- 5b. Smart-routing manifest (government-version binding) ---
+# Introspect the AI layer at install time and stamp a manifest that
+# binds the official build to a known set of models + strategies.
+# Operators can inspect the binding with `rollout-shield routing`.
+log "writing smart-routing manifest → $PREFIX/etc/rollout-shield/smart-routing.json"
+"$PYTHON_BIN" - "$REPO_ROOT" "$PREFIX" <<'PY'
+import json, sys, hashlib, datetime, importlib
+repo_root, prefix = sys.argv[1], sys.argv[2]
+sys.path.insert(0, repo_root)
+try:
+    import rollout_shield.ai.models as m
+    import rollout_shield.ai.own_models as own
+    bound = m.list_models()
+    own_ids = [info.id for info in bound if info.family == "own"]
+    mock_ids = [info.id for info in bound if info.family == "mock"]
+except Exception as exc:
+    # fallback when the AI layer is partially broken — manifest still
+    # stamps a valid envelope so the runtime can fall back gracefully.
+    bound, own_ids, mock_ids = [], [], []
+    print(f"[install] WARNING: could not introspect AI layer ({exc})", file=sys.stderr)
+
+manifest = {
+    "schema_version": 1,
+    "build_tier": "government",
+    "controller_policy": "shared",
+    "default_strategy": "best",
+    "bound_families": ["own", "mock"],
+    "bound_models": sorted(own_ids + mock_ids),
+    "priority_order": ["own", "mock"],
+    "routing_profiles": {
+        "shared":      {"strategy": "best",      "families": ["own", "mock"]},
+        "device-only": {"strategy": "consensus", "families": ["own"]},
+        "human-only":  {"strategy": "first",     "families": ["mock", "own"]},
+    },
+    "installed_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "repo_source":  repo_root,
+}
+# stamp signature: sha256 of canonical manifest (minus the signature field)
+canon = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode("utf-8")
+manifest["manifest_signature"] = "sha256:" + hashlib.sha256(canon).hexdigest()
+with open(f"{prefix}/etc/rollout-shield/smart-routing.json", "w") as fh:
+    json.dump(manifest, fh, indent=2, sort_keys=True)
+print(f"[install] manifest_signature={manifest['manifest_signature']}")
+print(f"[install] bound_models={len(manifest['bound_models'])}")
+PY
+
 # --- 6. Verify the install is callable ---
 log "verifying install…"
 if ! "$PREFIX/bin/rollout-shield" --version >/dev/null 2>&1; then
@@ -168,6 +279,12 @@ if ! "$PREFIX/bin/rollout-shield" --version >/dev/null 2>&1; then
 fi
 
 log "installed: $("$PREFIX/bin/rollout-shield" --version)"
+
+# --- 6b. Verify the smart-routing binding is callable ---
+log "verifying smart-routing binding…"
+if ! "$PREFIX/bin/rollout-shield" routing >/dev/null 2>&1; then
+  log "WARNING: rollout-shield routing did not exit 0 (manifest may be missing)"
+fi
 
 # --- 7. PATH hint (opt-out via --no-path) ---
 if [[ "$WRITE_PATH_HINT" -eq 1 ]]; then
@@ -183,6 +300,8 @@ fi
 cat <<EOF
 
 [install] OK — rollout-shield hard-built into $PREFIX
+[install] smart-routing bound: $PREFIX/etc/rollout-shield/smart-routing.json
 [install] verify with: scripts/verify-install.sh
+[install] inspect binding:  $PREFIX/bin/rollout-shield routing
 [install] uninstall:  scripts/uninstall.sh
 EOF

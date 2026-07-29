@@ -211,5 +211,56 @@ def cmd_ai(state: State, args: argparse.Namespace) -> int:
         return cmd_first_of_kind(state, args)
     if sub == "dashboard":
         return cmd_ai_dashboard(state, args)
+    if sub == "routing":
+        return cmd_routing(state, args)
     print(f"unknown ai subcommand: {sub}", file=sys.stderr)
     return 2
+
+
+def cmd_routing(state: State, args: argparse.Namespace) -> int:
+    """Show the smart-routing binding manifest.
+
+    The manifest is stamped at install time (see scripts/install.sh) and
+    records which AI models are bound to the government-version build,
+    which lateral-combination strategy is the default, and the
+    per-policy routing profiles.
+    """
+    import json as _json
+    from .. import routing
+
+    profile_name = getattr(args, "profile", None)
+    if not profile_name:
+        # derive from active state config
+        try:
+            cfg = state.load_config()
+            profile_name = cfg.get("controller_policy", "shared")
+        except Exception:
+            profile_name = "shared"
+
+    if getattr(args, "routing_json", False):
+        out = routing.manifest()
+        out["active_profile"] = routing.active_profile(profile_name)
+        print(_json.dumps(out, indent=2, sort_keys=True))
+        return 0
+
+    m = routing.manifest()
+    active = routing.active_profile(profile_name)
+
+    print(f"build tier        : {m.get('build_tier')}")
+    print(f"controller policy : {m.get('controller_policy')}")
+    print(f"default strategy  : {m.get('default_strategy')}")
+    print(f"bound families    : {', '.join(m.get('bound_families', []))}")
+    print(f"bound models      : {len(m.get('bound_models', []))}")
+    for mid in m.get("bound_models", []):
+        print(f"  - {mid}")
+    print(f"priority order    : {', '.join(m.get('priority_order', []))}")
+    print(f"active profile    : {profile_name}")
+    print(f"  strategy        : {active.get('strategy')}")
+    print(f"  families        : {', '.join(active.get('families', []))}")
+    if m.get("manifest_signature"):
+        print(f"manifest signature: {m.get('manifest_signature')}")
+    if m.get("installed_at"):
+        print(f"installed at      : {m.get('installed_at')}")
+    if m.get("repo_source"):
+        print(f"repo source       : {m.get('repo_source')}")
+    return 0

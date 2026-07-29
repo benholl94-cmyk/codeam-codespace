@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "controller_policy": "device-only",
+  "monitor_interval_seconds": 60,
+  "alert_webhook_url": "",
+  "claim_retention_days": 2555,
+  "health_window_seconds": 300,
+  "reputation_decay_days": 30,
+  "self_heal_enabled": true,
+  "self_heal_interval_cycles": 5
+}
