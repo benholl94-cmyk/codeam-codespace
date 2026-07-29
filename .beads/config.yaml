@@ -65,7 +65,13 @@
 # - linear.api_key  → use LINEAR_API_KEY env var instead
 # - github.token    → use GITHUB_TOKEN env var instead
 
-sync.remote: "git+https://github.com/CodeAgentMobile/codeam-codespace"
+# Standalone-canonical mode: sync.remote intentionally disabled.
+# When this workspace has upstream write access (push token, collaborator role,
+# or personal-fork origin), uncomment the line below and point it at the
+# writable remote. See scripts/setup-fork.sh for an idempotent helper.
+#
+# sync.remote: "git@github.com:<owner>/codeam-codespace.git"
+sync.remote: ""
 dolt:
     shared-server: true
 export:
