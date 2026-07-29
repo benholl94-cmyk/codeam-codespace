@@ -93,6 +93,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if path == "/" or path == "":
             self._send_file(INTERFACE_DIR / "index.html")
             return
+        if path == "/ai-assistance.html":
+            self._send_file(INTERFACE_DIR / "ai-assistance.html")
+            return
         rel = path.lstrip("/")
         if rel.startswith("static/"):
             self._send_file(INTERFACE_DIR / rel)
@@ -131,6 +134,42 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     sanitized.append({kk: vv for kk, vv in k.items()
                                       if kk not in ("private_key_pem", "private_key")})
                 self._send_json(200, {"keys": sanitized})
+            elif path == "/api/ai/leaderboard":
+                from .ai.leaderboard import (latest_per_model_benchmark,
+                                             aggregate_scores, top_model)
+                entries = latest_per_model_benchmark(self.state)
+                scores = aggregate_scores(self.state)
+                best = top_model(self.state)
+                self._send_json(200, {
+                    "best": {"model_id": best[0], "score": best[1]} if best else None,
+                    "scores": scores,
+                    "entries": [e.to_dict() for e in entries],
+                })
+            elif path == "/api/ai/cycles":
+                from .ai.self_cycle import iter_cycles
+                limit = int(query.get("limit", ["50"])[0])
+                cycles = iter_cycles(self.state, limit=limit)
+                self._send_json(200, {
+                    "cycles": [c.to_dict() for c in cycles],
+                })
+            elif path == "/api/ai/first-of-kind":
+                from .ai.generator import iter_artifacts
+                limit = int(query.get("limit", ["50"])[0])
+                kind = query.get("kind", [None])[0]
+                artifacts = iter_artifacts(self.state, limit=limit, kind=kind)
+                self._send_json(200, {
+                    "artifacts": [a.to_dict() for a in artifacts],
+                })
+            elif path == "/api/ai/models":
+                from .ai.models import list_models
+                models = list_models()
+                self._send_json(200, {
+                    "models": [
+                        {"id": m.id, "name": m.name, "family": m.family,
+                         "description": m.description}
+                        for m in models
+                    ],
+                })
             else:
                 self._send_json(404, {"error": "unknown_endpoint", "path": path})
         except Exception as exc:  # noqa: BLE001 — never expose stack traces to the browser

@@ -144,6 +144,12 @@ def _cmd_host_workspace(args: argparse.Namespace) -> int:
     return cmd_host_workspace(state, args)
 
 
+def _cmd_ai(args: argparse.Namespace) -> int:
+    from .commands.ai import cmd_ai
+    state = State(root=args.state_root)
+    return cmd_ai(state, args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Common args available on every subcommand. Using `parents=` makes
     # argparse pass them through to subparsers as if they were defined
@@ -250,6 +256,66 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--include-checks", action="store_true",
                    help="include the full health-check results in the JSON output")
     p.set_defaults(func=_cmd_host_workspace)
+
+    # ai
+    p = sub.add_parser("ai", help="AI assistance: parallel-lateral router, benchmarks, "
+                                    "self-cycles, First-of-kind generator",
+                       parents=[common])
+    sub_ai = p.add_subparsers(dest="ai_command", required=False)
+    # ai route
+    pa = sub_ai.add_parser("route", help="route a prompt through N models in parallel",
+                           parents=[common])
+    pa.add_argument("prompt", nargs="+", help="prompt text")
+    pa.add_argument("--strategy", default="best",
+                    choices=["best", "concat", "consensus", "first", "median"])
+    pa.add_argument("--model", dest="models", action="append", default=None,
+                    help="model id (repeatable); defaults to all registered models")
+    pa.add_argument("--no-leaderboard", dest="use_leaderboard",
+                    action="store_false", default=True,
+                    help="don't use leaderboard scores for the 'best' strategy")
+    pa.set_defaults(ai_command="route")
+    # ai benchmark
+    pa = sub_ai.add_parser("benchmark", help="benchmark a model", parents=[common])
+    pa.add_argument("--model", required=True, help="model id to benchmark")
+    pa.add_argument("--prompt", dest="prompts", action="append", default=None,
+                    help="prompt text (repeatable); defaults to a fixed set")
+    pa.add_argument("--record", action="store_true",
+                    help="record the results to the leaderboard")
+    pa.set_defaults(ai_command="benchmark")
+    # ai cycle
+    pa = sub_ai.add_parser("cycle", help="run a self-cycle", parents=[common])
+    pa.add_argument("--count", type=int, default=1,
+                    help="number of cycles to run (default 1)")
+    pa.add_argument("--prompt", default=None, help="override the cycle prompt")
+    pa.add_argument("--strategy", default="best",
+                    choices=["best", "concat", "consensus", "first", "median"])
+    pa.add_argument("--kind", default="summary",
+                    choices=["poem", "slogan", "code", "structured", "summary"],
+                    help="first-of-kind artifact kind to generate")
+    pa.add_argument("--no-artifact", action="store_true",
+                    help="don't generate a first-of-kind artifact for the cycle")
+    pa.set_defaults(ai_command="cycle")
+    # ai leaderboard
+    pa = sub_ai.add_parser("leaderboard", help="show benchmark leaderboard",
+                           parents=[common])
+    pa.set_defaults(ai_command="leaderboard")
+    # ai first-of-kind
+    pa = sub_ai.add_parser("first-of-kind", help="generate a First-of-kind artifact",
+                           parents=[common])
+    pa.add_argument("prompt", nargs="+", help="prompt text")
+    pa.add_argument("--kind", default="poem",
+                    choices=["poem", "slogan", "code", "structured", "summary"])
+    pa.add_argument("--tag", action="append", default=[],
+                    help="tag to attach to the artifact (repeatable)")
+    pa.set_defaults(ai_command="first-of-kind")
+    # ai dashboard
+    pa = sub_ai.add_parser("dashboard", help="show the AI tab URL",
+                           parents=[common])
+    pa.add_argument("--host", default="127.0.0.1")
+    pa.add_argument("--port", type=int, default=8765)
+    pa.add_argument("--open", action="store_true")
+    pa.set_defaults(ai_command="dashboard")
+    p.set_defaults(func=_cmd_ai)
 
     return parser
 

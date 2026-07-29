@@ -16,3 +16,6 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Codespaces preview metadata (regenerated each session)
+.codeam/
+
