@@ -110,7 +110,8 @@ def generate(state: State, prompt: str, kind: str = "poem",
                   models=list({KIND_TO_MODEL[kind], "mock-deterministic"}),
                   strategy="best",
                   benchmark_scores=benchmark_scores,
-                  max_workers=2)
+                  max_workers=2,
+                  state=state)
     text = trace.selected_text or ""
     model_id = trace.selected or KIND_TO_MODEL[kind]
 

@@ -155,7 +155,8 @@ def run_one_cycle(state: State, cycle: int | None = None,
     # Use the latest leaderboard scores for the best-strategy routing
     benchmark_scores = aggregate_scores(state)
     trace = route(prompt=prompt, models=models, strategy=strategy,
-                  benchmark_scores=benchmark_scores, max_workers=4)
+                  benchmark_scores=benchmark_scores, max_workers=4,
+                  state=state)
 
     # Run benchmarks per model
     all_results: list[BenchmarkResult] = []

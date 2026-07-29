@@ -129,7 +129,8 @@ def route(prompt: str,
           strategy: str = "best",
           benchmark_scores: dict[str, float] | None = None,
           max_workers: int = 4,
-          timeout_s: float = 10.0) -> RouteTrace:
+          timeout_s: float = 10.0,
+          state: "State | None" = None) -> RouteTrace:
     """Route a prompt through N models in parallel and combine laterally.
 
     Parameters
@@ -162,7 +163,11 @@ def route(prompt: str,
         info = info_by_id[model_id]
         t0 = time.perf_counter()
         try:
-            output = info.run(prompt)
+            # Thread an optional ``state`` kwarg so own models (which
+            # read the local state as their "weights") can use it.
+            # Falls back to the no-kwargs invocation for purely offline
+            # mocks (they ignore the extra kwarg).
+            output = info.run(prompt, state=state)
             elapsed = (time.perf_counter() - t0) * 1000
             return {
                 "model_id": model_id,

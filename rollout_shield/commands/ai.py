@@ -36,7 +36,8 @@ def cmd_route(state: State, args: argparse.Namespace) -> int:
     trace = router_route(prompt=prompt,
                          models=args.models,
                          strategy=args.strategy,
-                         benchmark_scores=scores or {})
+                         benchmark_scores=scores or {},
+                         state=state)
     if args.json:
         print(json.dumps(trace.to_dict(), indent=2, ensure_ascii=False))
         return 0
@@ -74,7 +75,8 @@ def cmd_benchmark(state: State, args: argparse.Namespace) -> int:
     ctx: dict = {}
     cycle_ts = int(time.time())
     for prompt in prompts:
-        output = model.run(prompt)
+        # pass state so own models can read their weights
+        output = model.run(prompt, state=state)
         results = run_model_benchmarks(args.model, output, ctx=ctx)
         all_results.extend(results)
     scores = aggregate_benchmark_results(all_results)

@@ -193,3 +193,66 @@ register_model(ModelInfo(
     family="mock",
     fn=mock_code,
 ))
+
+
+# ---------- own-model versions (code-defined; part of rollout-shield IP) ----------
+#
+# These models are registered lazily so importing `models.py` does not
+# eagerly pull in the rollout-shield state subsystem. They appear in
+# ``list_models()`` exactly like the mock models, but their "weights"
+# are the local state, repo, and specs — see ``own_models.py``.
+
+try:
+    from .own_models import (
+        rollout_model,
+        verifier_model,
+        contradictor_model,
+        repo_aware_model,
+        spec_citation_model,
+    )
+
+    register_model(ModelInfo(
+        id="rollout-model",
+        name="Rollout Model",
+        description="Drafts a change-claim linked to the latest intent; uses local state as weights",
+        family="own",
+        fn=rollout_model,
+        meta={"kind": "claim-drafter", "reads": ["state"]},
+    ))
+    register_model(ModelInfo(
+        id="verifier-model",
+        name="Verifier Model",
+        description="Verifies a claim's Ed25519 signature and drafts a verify-claim",
+        family="own",
+        fn=verifier_model,
+        meta={"kind": "claim-drafter", "reads": ["state", "cryptography"]},
+    ))
+    register_model(ModelInfo(
+        id="contradictor-model",
+        name="Contradictor Model",
+        description="Scans a claim for contradictions against the claim DAG and drafts a contradict-claim",
+        family="own",
+        fn=contradictor_model,
+        meta={"kind": "claim-drafter", "reads": ["state"]},
+    ))
+    register_model(ModelInfo(
+        id="repo-aware-model",
+        name="Repo-Aware Model",
+        description="Searches the repo for files matching the prompt; uses the repo as its weights",
+        family="own",
+        fn=repo_aware_model,
+        meta={"kind": "retrieval", "reads": ["repo"]},
+    ))
+    register_model(ModelInfo(
+        id="spec-citation-model",
+        name="Spec-Citation Model",
+        description="Returns citations from protocol/ agent/ rollout/ hardware/ specs matching the prompt",
+        family="own",
+        fn=spec_citation_model,
+        meta={"kind": "retrieval", "reads": ["specs"]},
+    ))
+except ImportError:
+    # own_models.py is missing or has a transitive import error; the
+    # mock models still work. The lazy guard makes the failure
+    # surfaced only when the user actually requests an own model.
+    pass
