@@ -25,10 +25,8 @@ from __future__ import annotations
 
 import math
 import threading
-import time
 from collections import defaultdict
-from typing import Iterable
-
+from collections.abc import Iterable
 
 # --- Prometheus default buckets ---
 DEFAULT_BUCKETS: tuple[float, ...] = (
@@ -71,7 +69,7 @@ class Counter:
             if self.labelnames:
                 lstr = ",".join(
                     f'{n}="{_escape(v)}"'
-                    for n, v in zip(self.labelnames, labels)
+                    for n, v in zip(self.labelnames, labels, strict=False)
                 )
                 yield f"{self.name}{{{lstr}}} {_fmt_float(value)}"
             else:
@@ -115,7 +113,7 @@ class Gauge:
             if self.labelnames:
                 lstr = ",".join(
                     f'{n}="{_escape(v)}"'
-                    for n, v in zip(self.labelnames, labels)
+                    for n, v in zip(self.labelnames, labels, strict=False)
                 )
                 yield f"{self.name}{{{lstr}}} {_fmt_float(value)}"
             else:
@@ -163,7 +161,7 @@ class Histogram:
             if self.labelnames:
                 base_lstr = ",".join(
                     f'{n}="{_escape(v)}"'
-                    for n, v in zip(self.labelnames, labels)
+                    for n, v in zip(self.labelnames, labels, strict=False)
                 )
             else:
                 base_lstr = ""
@@ -273,6 +271,15 @@ def registry() -> _Registry:
                 _REGISTRY.register(webhook_outbox_depth)
                 _REGISTRY.register(webhook_dlq_depth)
                 _REGISTRY.register(webhook_targets_count)
+                # finetuning metrics
+                _REGISTRY.register(finetuning_datasets_total)
+                _REGISTRY.register(finetuning_runs_total)
+                _REGISTRY.register(finetuning_run_steps_total)
+                _REGISTRY.register(finetuning_run_duration_seconds)
+                _REGISTRY.register(finetuning_eval_score)
+                _REGISTRY.register(finetuning_adapters_total)
+                _REGISTRY.register(finetuning_promoted_total)
+                _REGISTRY.register(finetuning_storage_bytes)
     return _REGISTRY
 
 
@@ -379,6 +386,47 @@ webhook_dlq_depth = Gauge(
 webhook_targets_count = Gauge(
     "rollout_shield_webhook_targets_count",
     "Number of webhook targets configured.",
+)
+
+
+# --- finetuning metrics (rollout_shield.finetuning) ----------------------
+
+finetuning_datasets_total = Gauge(
+    "rollout_shield_finetuning_datasets_total",
+    "Number of registered finetuning datasets.",
+)
+finetuning_runs_total = Counter(
+    "rollout_shield_finetuning_runs_total",
+    "Total number of finetuning runs started, by terminal status.",
+    labelnames=("backend", "recipe", "status"),
+)
+finetuning_run_steps_total = Counter(
+    "rollout_shield_finetuning_run_steps_total",
+    "Total number of training steps executed across all finetuning runs.",
+    labelnames=("backend", "recipe"),
+)
+finetuning_run_duration_seconds = Histogram(
+    "rollout_shield_finetuning_run_duration_seconds",
+    "End-to-end duration of a finetuning run, in seconds.",
+    labelnames=("backend", "status"),
+)
+finetuning_eval_score = Histogram(
+    "rollout_shield_finetuning_eval_score",
+    "Evaluation metric scores produced by the finetuning eval harness.",
+    labelnames=("recipe", "metric"),
+)
+finetuning_adapters_total = Gauge(
+    "rollout_shield_finetuning_adapters_total",
+    "Number of finetuning adapters persisted to state.",
+    labelnames=("backend", "status"),
+)
+finetuning_promoted_total = Gauge(
+    "rollout_shield_finetuning_promoted_total",
+    "Number of finetuning adapters currently promoted as routable models.",
+)
+finetuning_storage_bytes = Gauge(
+    "rollout_shield_finetuning_storage_bytes",
+    "Approximate disk usage of the finetuning state directory, in bytes.",
 )
 
 

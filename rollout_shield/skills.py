@@ -36,15 +36,13 @@ skill invocations in its metrics.
 from __future__ import annotations
 
 import importlib
-import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
 
 from . import logging as _log
-from .plugins import PluginError, _parse_manifest_text, _coerce
-
+from .plugins import PluginError, _parse_manifest_text
 
 SkillFn = Callable[..., dict]
 

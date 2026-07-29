@@ -40,7 +40,6 @@ from .host_checks import run_host_checks
 from .repo_checks import run_repo_checks
 from .state import State
 
-
 DAEMON_HEARTBEAT_FILE = "daemon.json"
 
 

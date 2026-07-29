@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 def test_load_policy_default(scratch_state):
     from rollout_shield.space import load_policy
@@ -17,7 +15,7 @@ def test_load_policy_unknown_falls_back_to_shared(scratch_state):
 
 
 def test_save_policy_returns_backup_path(scratch_state):
-    from rollout_shield.space import save_policy, load_policy
+    from rollout_shield.space import load_policy, save_policy
     backup = save_policy(scratch_state, "device-only", backup=True)
     assert backup is not None
     assert backup.exists()
@@ -84,7 +82,7 @@ def test_validate_space_consistent_when_shared(scratch_state):
 
 
 def test_validate_space_flags_violation_under_device_only(scratch_state):
-    from rollout_shield.space import validate_space, save_policy
+    from rollout_shield.space import save_policy, validate_space
     save_policy(scratch_state, "device-only", backup=False)
     scratch_state.put_key("agk_human_x", {"id": "agk_human_x", "hardware_anchored": False})
     consistent, violations = validate_space(scratch_state)
@@ -106,7 +104,7 @@ def test_latest_key_for_agent_no_keys(scratch_state):
 
 
 def test_space_info_collects_stats(scratch_state):
-    from rollout_shield.space import space_info, save_policy
+    from rollout_shield.space import save_policy, space_info
     save_policy(scratch_state, "shared", backup=False)
     scratch_state.put_key("agk_a", {"id": "agk_a", "agent_id": "a", "hardware_anchored": True})
     scratch_state.put_key("agk_b", {"id": "agk_b", "agent_id": "b", "hardware_anchored": False})

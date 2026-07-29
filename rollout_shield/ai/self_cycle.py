@@ -30,18 +30,19 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from ..state import State, atomic_append_jsonl
-from .benchmarks import (DEFAULT_BENCHMARKS, BenchmarkResult,
-                         aggregate_benchmark_results, run_model_benchmarks)
+from .benchmarks import (
+    DEFAULT_BENCHMARKS,
+    BenchmarkResult,
+    aggregate_benchmark_results,
+    run_model_benchmarks,
+)
 from .generator import generate as generate_fok
-from .leaderboard import (LeaderboardEntry, aggregate_scores, append_entries,
-                          iter_entries, top_model)
-from .models import list_models
+from .leaderboard import LeaderboardEntry, aggregate_scores, append_entries
 from .router import route
-
 
 # A small fixed prompt set so cycles are reproducible.
 DEFAULT_PROMPTS = [

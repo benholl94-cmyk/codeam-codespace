@@ -6,7 +6,6 @@ import argparse
 import json
 import platform
 import sys
-from pathlib import Path
 
 from ..state import State
 

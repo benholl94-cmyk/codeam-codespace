@@ -1,6 +1,7 @@
 """Quick check for the metrics command."""
 
 import argparse
+
 from ..state import State
 
 

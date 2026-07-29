@@ -36,8 +36,9 @@ def test_mock_deterministic_output_is_stable():
 
 
 def test_mock_structured_returns_json():
-    from rollout_shield.ai.models import mock_structured
     import json
+
+    from rollout_shield.ai.models import mock_structured
     out = mock_structured("test", {})
     parsed = json.loads(out["text"])
     assert parsed["kind"] == "structured-response"
@@ -60,7 +61,6 @@ def test_router_runs_models_in_parallel(scratch_state):
 
 
 def test_router_strategy_first():
-    from rollout_shield.ai.models import list_models
     from rollout_shield.ai.router import route
     trace = route(prompt="first", models=["mock-deterministic"], strategy="first")
     assert trace.selected == "mock-deterministic"

@@ -24,7 +24,6 @@ from typing import Any
 
 from .state import State
 
-
 SEVERITY_LEVELS = {"info", "warning", "error", "critical"}
 
 

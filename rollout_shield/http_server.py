@@ -25,15 +25,12 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
-import os
 import sys
-import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .state import State
-
 
 INTERFACE_DIR = Path(__file__).parent / "interface"
 
@@ -97,7 +94,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 while True:
                     self.wfile.write(b": heartbeat\n\n")
                     self.wfile.flush()
-                    import time as _t; _t.sleep(15.0)
+                    import time as _t
+                    _t.sleep(15.0)
                 return
             with log_path.open("rb") as fh:
                 # last 100 lines
@@ -117,7 +115,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     decoded = line.decode("utf-8", errors="replace")
                 except Exception:
                     continue
-                self.wfile.write(f"data: {decoded}\n\n".encode("utf-8"))
+                self.wfile.write(f"data: {decoded}\n\n".encode())
             self.wfile.flush()
             # heartbeat to keep connection alive
             self.wfile.write(b": end\n\n")
@@ -164,6 +162,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         if path == "/ai-assistance.html":
             self._send_file(INTERFACE_DIR / "ai-assistance.html")
+            return
+        if path == "/finetuning.html":
+            self._send_file(INTERFACE_DIR / "finetuning.html")
             return
         rel = path.lstrip("/")
         if rel.startswith("static/"):
@@ -218,8 +219,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 # a live log view.
                 self._send_log_stream(query)
             elif path == "/api/ai/leaderboard":
-                from .ai.leaderboard import (latest_per_model_benchmark,
-                                             aggregate_scores, top_model)
+                from .ai.leaderboard import aggregate_scores, latest_per_model_benchmark, top_model
                 entries = latest_per_model_benchmark(self.state)
                 scores = aggregate_scores(self.state)
                 best = top_model(self.state)
@@ -259,7 +259,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "targets": [t.to_dict() for t in list_targets(self.state)],
                 })
             elif path == "/api/webhooks/deliveries":
-                from .webhook_delivery import list_deliveries, DeliveryStatus
+                from .webhook_delivery import DeliveryStatus, list_deliveries
                 status = query.get("status", [None])[0]
                 target = query.get("target", [None])[0]
                 limit = int(query.get("limit", ["100"])[0])
@@ -295,6 +295,65 @@ class DashboardHandler(BaseHTTPRequestHandler):
                                           "delivery_id": delivery_id})
                     return
                 self._send_json(200, rec.to_dict())
+            elif path == "/api/finetuning/datasets":
+                from .finetuning import list_datasets
+                self._send_json(200, {"datasets": [d.to_dict() for d in
+                                                   list_datasets(self.state)]})
+            elif path.startswith("/api/finetuning/datasets/"):
+                from .finetuning import get_dataset
+                ds_id = path[len("/api/finetuning/datasets/"):]
+                rec = get_dataset(self.state, ds_id)
+                if rec is None:
+                    self._send_json(404, {"error": "unknown_dataset",
+                                          "dataset_id": ds_id})
+                    return
+                self._send_json(200, rec.to_dict())
+            elif path == "/api/finetuning/adapters":
+                from .finetuning import list_adapters
+                self._send_json(200, {"adapters": [a.to_dict() for a in
+                                                   list_adapters(self.state)]})
+            elif path.startswith("/api/finetuning/adapters/"):
+                from .finetuning import get_adapter
+                rest = path[len("/api/finetuning/adapters/"):]
+                parts = rest.split("/")
+                adapter_id = parts[0]
+                rec = get_adapter(self.state, adapter_id)
+                if rec is None:
+                    self._send_json(404, {"error": "unknown_adapter",
+                                          "adapter_id": adapter_id})
+                    return
+                self._send_json(200, rec.to_dict())
+            elif path == "/api/finetuning/runs":
+                from .finetuning import list_runs
+                status = query.get("status", [None])[0]
+                self._send_json(200, {"runs": [r.to_dict() for r in
+                                               list_runs(self.state,
+                                                         status=status)]})
+            elif path.startswith("/api/finetuning/runs/"):
+                from .finetuning import get_run
+                run_id = path[len("/api/finetuning/runs/"):]
+                rec = get_run(self.state, run_id)
+                if rec is None:
+                    self._send_json(404, {"error": "unknown_run",
+                                          "run_id": run_id})
+                    return
+                self._send_json(200, rec.to_dict())
+            elif path == "/api/finetuning/stats":
+                from .finetuning import (
+                    list_adapters,
+                    list_datasets,
+                    list_promoted,
+                    list_runs,
+                )
+                self._send_json(200, {
+                    "datasets": len(list_datasets(self.state)),
+                    "adapters": len(list_adapters(self.state)),
+                    "promoted": len(list_promoted(self.state)),
+                    "runs": len(list_runs(self.state)),
+                })
+            elif path == "/api/finetuning/doctor":
+                from .finetuning import doctor as finetune_doctor
+                self._send_json(200, finetune_doctor(self.state).to_dict())
             else:
                 self._send_json(404, {"error": "unknown_endpoint", "path": path})
         except Exception as exc:  # noqa: BLE001 — never expose stack traces to the browser
@@ -364,6 +423,93 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     status_holder["code"] = 400
                     self._send_json(400, {"error": repr(exc)})
                 return
+            if path == "/api/finetuning/datasets":
+                body = self._read_body_json()
+                if not body:
+                    status_holder["code"] = 400
+                    self._send_json(400, {"error": "invalid_json"})
+                    return
+                from .finetuning import DatasetError, register_dataset
+                try:
+                    rec = register_dataset(
+                        self.state,
+                        path=Path(body["path"]),
+                        name=str(body["name"]),
+                        split=float(body.get("split", 0.9)),
+                        format_name=str(body.get("format", "prompt-target")),
+                    )
+                    self._send_json(201, rec.to_dict())
+                except (DatasetError, FileNotFoundError, KeyError,
+                        ValueError) as exc:
+                    status_holder["code"] = 400
+                    self._send_json(400, {"error": repr(exc)})
+                return
+            if path.startswith("/api/finetuning/datasets/") and path.endswith("/remove"):
+                ds_id = path[
+                    len("/api/finetuning/datasets/"):-len("/remove")]
+                from .finetuning import remove_dataset
+                remove_dataset(self.state, ds_id)
+                self._send_json(200, {"removed": ds_id})
+                return
+            if path.startswith("/api/finetuning/adapters/"):
+                rest = path[len("/api/finetuning/adapters/"):]
+                from .finetuning import (
+                    promote_adapter,
+                    unpromote_adapter,
+                )
+                if rest.endswith("/promote"):
+                    adapter_id = rest[:-len("/promote")]
+                    try:
+                        updated = promote_adapter(self.state, adapter_id)
+                        self._send_json(200, updated.to_dict())
+                    except (FileNotFoundError, ValueError) as exc:
+                        status_holder["code"] = 400
+                        self._send_json(400, {"error": repr(exc)})
+                    return
+                if rest.endswith("/unpromote"):
+                    adapter_id = rest[:-len("/unpromote")]
+                    ok = unpromote_adapter(self.state, adapter_id)
+                    self._send_json(200, {"unpromoted": ok,
+                                          "adapter_id": adapter_id})
+                    return
+            if path == "/api/finetuning/runs":
+                body = self._read_body_json()
+                if not body:
+                    status_holder["code"] = 400
+                    self._send_json(400, {"error": "invalid_json"})
+                    return
+                from .finetuning import TrainingError, start_run
+                try:
+                    rec = start_run(
+                        self.state,
+                        dataset_id=str(body["dataset_id"]),
+                        base_model_id=str(body["base_model_id"]),
+                        recipe_name=str(body.get("recipe_name", "sft-mini")),
+                        backend=str(body.get("backend", "stdlib")),
+                        epochs=int(body["epochs"]) if "epochs" in body else None,
+                        batch_size=int(body["batch_size"]) if "batch_size" in body else None,
+                        lr=float(body["lr"]) if "lr" in body else None,
+                        seed=int(body["seed"]) if "seed" in body else None,
+                        max_steps=int(body["max_steps"]) if "max_steps" in body else None,
+                        eval_threshold=float(body["eval_threshold"]) if "eval_threshold" in body else None,
+                        register=bool(body.get("register", False)),
+                    )
+                    self._send_json(201, rec.to_dict())
+                except (TrainingError, FileNotFoundError, KeyError,
+                        ValueError) as exc:
+                    status_holder["code"] = 400
+                    self._send_json(400, {"error": repr(exc)})
+                return
+            if path.startswith("/api/finetuning/runs/") and path.endswith("/abort"):
+                run_id = path[len("/api/finetuning/runs/"):-len("/abort")]
+                from .finetuning import TrainingError, abort_run
+                try:
+                    rec = abort_run(self.state, run_id)
+                    self._send_json(200, rec.to_dict())
+                except TrainingError as exc:
+                    status_holder["code"] = 400
+                    self._send_json(400, {"error": repr(exc)})
+                return
             status_holder["code"] = 404
             self._send_json(404, {"error": "unknown_endpoint", "path": path})
         finally:
@@ -394,14 +540,14 @@ def main(argv: list[str] | None = None) -> int:
     url = f"http://{args.host}:{args.port}/"
     print(f"[dashboard] serving on {url}", file=sys.stderr)
     print(f"[dashboard] state root: {state.root}", file=sys.stderr)
-    print(f"[dashboard] endpoints:", file=sys.stderr)
-    print(f"  GET /                  → dashboard HTML", file=sys.stderr)
-    print(f"  GET /api/health        → latest health summary", file=sys.stderr)
-    print(f"  GET /api/claims        → recent claims (?limit=N)", file=sys.stderr)
-    print(f"  GET /api/alerts        → recent alerts (?limit=N)", file=sys.stderr)
-    print(f"  GET /api/reputation    → reputation index", file=sys.stderr)
-    print(f"  GET /api/status        → system summary", file=sys.stderr)
-    print(f"  GET /api/keys          → registered keys (no private material)", file=sys.stderr)
+    print("[dashboard] endpoints:", file=sys.stderr)
+    print("  GET /                  → dashboard HTML", file=sys.stderr)
+    print("  GET /api/health        → latest health summary", file=sys.stderr)
+    print("  GET /api/claims        → recent claims (?limit=N)", file=sys.stderr)
+    print("  GET /api/alerts        → recent alerts (?limit=N)", file=sys.stderr)
+    print("  GET /api/reputation    → reputation index", file=sys.stderr)
+    print("  GET /api/status        → system summary", file=sys.stderr)
+    print("  GET /api/keys          → registered keys (no private material)", file=sys.stderr)
 
     if args.open:
         try:

@@ -21,8 +21,7 @@ import time
 import uuid
 from pathlib import Path
 
-from ..state import State, atomic_write_json
-
+from ..state import State
 
 KEYS_MATERIAL_DIRNAME = "keys_material"
 
@@ -36,7 +35,10 @@ def _generate_keypair() -> tuple[str, str]:
     try:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
         from cryptography.hazmat.primitives.serialization import (
-            Encoding, NoEncryption, PrivateFormat, PublicFormat,
+            Encoding,
+            NoEncryption,
+            PrivateFormat,
+            PublicFormat,
         )
     except ImportError as exc:
         raise RuntimeError(
@@ -81,7 +83,7 @@ def cmd_keys_new(state: State, agent_id: str, description: str = "",
 
     # Enforce the controller policy. Raises PolicyViolation if disallowed;
     # in that case we MUST NOT write any private material to disk.
-    from ..space import enforce_policy_for_key, PolicyViolation
+    from ..space import PolicyViolation, enforce_policy_for_key
     try:
         enforce_policy_for_key(state, action="keys_new", key_meta=proposed_meta)
     except PolicyViolation:
@@ -118,10 +120,10 @@ def cmd_keys(state: State, args: argparse.Namespace) -> int:
         return _keys_list(state, args)
     if sub == "new":
         # Reject the --hardware-anchored flag if the policy is human-only.
-        from ..space import load_policy, VALID_POLICIES
+        from ..space import load_policy
         policy = load_policy(state)
         if args.hardware_anchored and policy == "human-only":
-            print(f"keys new: ERROR — policy=human-only forbids hardware-anchored keys",
+            print("keys new: ERROR — policy=human-only forbids hardware-anchored keys",
                   file=__import__("sys").stderr)
             return 1
         try:
@@ -141,7 +143,7 @@ def cmd_keys(state: State, args: argparse.Namespace) -> int:
                 print(f"  algorithm:   {k.get('algorithm')}")
                 print(f"  material:    {k.get('private_key_path')}")
                 if k.get("hardware_anchored"):
-                    print(f"  hardware_anchored: yes")
+                    print("  hardware_anchored: yes")
         return 0
     if sub == "show":
         meta = state.get_key(args.key_id)

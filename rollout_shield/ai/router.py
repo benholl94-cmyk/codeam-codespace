@@ -30,13 +30,14 @@ from __future__ import annotations
 
 import concurrent.futures as cf
 import hashlib
-import json
 import time
-from dataclasses import dataclass, field, asdict
-from typing import Any
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING
 
-from .models import ModelInfo, list_models
+from .models import list_models
 
+if TYPE_CHECKING:
+    from ..state import State
 
 STRATEGIES = ("best", "concat", "consensus", "first", "median")
 
@@ -130,7 +131,7 @@ def route(prompt: str,
           benchmark_scores: dict[str, float] | None = None,
           max_workers: int = 4,
           timeout_s: float = 10.0,
-          state: "State | None" = None) -> RouteTrace:
+          state: State | None = None) -> RouteTrace:
     """Route a prompt through N models in parallel and combine laterally.
 
     Parameters

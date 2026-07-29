@@ -23,8 +23,9 @@ from ..state import State
 
 
 def cmd_route(state: State, args: argparse.Namespace) -> int:
-    from ..ai.router import route as router_route, STRATEGIES
     from ..ai.leaderboard import aggregate_scores
+    from ..ai.router import STRATEGIES
+    from ..ai.router import route as router_route
     prompt = " ".join(args.prompt)
     if not prompt:
         print("usage: rollout-shield ai route <prompt...>", file=sys.stderr)
@@ -62,7 +63,7 @@ def cmd_route(state: State, args: argparse.Namespace) -> int:
 
 
 def cmd_benchmark(state: State, args: argparse.Namespace) -> int:
-    from ..ai.benchmarks import run_model_benchmarks, aggregate_benchmark_results
+    from ..ai.benchmarks import aggregate_benchmark_results, run_model_benchmarks
     from ..ai.leaderboard import LeaderboardEntry, append_entries
     from ..ai.models import get_model
     model = get_model(args.model)
@@ -102,7 +103,7 @@ def cmd_benchmark(state: State, args: argparse.Namespace) -> int:
 
 
 def cmd_cycle(state: State, args: argparse.Namespace) -> int:
-    from ..ai.self_cycle import run_n_cycles, run_one_cycle, iter_cycles
+    from ..ai.self_cycle import iter_cycles, run_n_cycles, run_one_cycle
     if args.count and args.count > 1:
         records = run_n_cycles(state, n=args.count, prompt=args.prompt,
                                 strategy=args.strategy, generate_artifact=not args.no_artifact,
@@ -120,7 +121,7 @@ def cmd_cycle(state: State, args: argparse.Namespace) -> int:
         print(f"  selected:       {r.selected_model}")
         print(f"  speedup:        x{r.parallel_speedup:.2f}")
         print(f"  duration:       {r.duration_ms:.1f} ms")
-        print(f"  benchmark:")
+        print("  benchmark:")
         for mid, score in sorted(r.benchmark_scores.items(), key=lambda kv: -kv[1]):
             print(f"    {mid:<22} {score:.4f}")
         if r.artifacts:
@@ -131,7 +132,7 @@ def cmd_cycle(state: State, args: argparse.Namespace) -> int:
 
 
 def cmd_leaderboard(state: State, args: argparse.Namespace) -> int:
-    from ..ai.leaderboard import latest_per_model_benchmark, aggregate_scores, top_model
+    from ..ai.leaderboard import aggregate_scores, latest_per_model_benchmark, top_model
     entries = latest_per_model_benchmark(state)
     scores = aggregate_scores(state)
     best = top_model(state)
@@ -158,8 +159,8 @@ def cmd_leaderboard(state: State, args: argparse.Namespace) -> int:
 
 
 def cmd_first_of_kind(state: State, args: argparse.Namespace) -> int:
-    from ..ai.generator import (KIND_TO_MODEL, generate as gen_fok,
-                                 first_of_kind_id, iter_artifacts, get_artifact)
+    from ..ai.generator import first_of_kind_id
+    from ..ai.generator import generate as gen_fok
     prompt = " ".join(args.prompt)
     if not prompt:
         print("usage: rollout-shield ai first-of-kind <prompt...>", file=sys.stderr)
@@ -226,6 +227,7 @@ def cmd_routing(state: State, args: argparse.Namespace) -> int:
     per-policy routing profiles.
     """
     import json as _json
+
     from .. import routing
 
     profile_name = getattr(args, "profile", None)

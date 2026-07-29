@@ -35,10 +35,8 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any
 
 from ..state import State
-
 
 # Spec / repo locations — these are the "weights" of the own models.
 # They are intentionally relative to the repo root so the models work
@@ -183,7 +181,6 @@ def _verify_signature(claim: dict) -> dict:
         return {"ok": False, "reason": "missing signature or public key"}
     try:
         from cryptography.hazmat.primitives.serialization import load_pem_public_key
-        from cryptography.exceptions import InvalidSignature
     except ImportError:
         return {"ok": False, "reason": "cryptography package not installed"}
 
@@ -313,7 +310,6 @@ def _find_contradictions(claim: dict, all_claims: list[dict]) -> list[dict]:
 
     # 2. Body contradiction (very simple lexical heuristic)
     if parent is not None:
-        pbody = (parent.get("body") or "").lower()
         cbody = (claim.get("body") or "").lower()
         if "revert" in cbody or " undo " in cbody or " not " in cbody:
             found.append({

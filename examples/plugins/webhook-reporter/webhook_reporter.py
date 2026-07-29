@@ -12,10 +12,8 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import urllib.request
 from typing import Any
-
 
 _LAST_DELIVERY: dict[str, Any] = {"ok": None, "ts": None, "error": None}
 

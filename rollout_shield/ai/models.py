@@ -22,9 +22,8 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Any
-
 
 ModelFn = Callable[[str, dict], dict]
 
@@ -204,11 +203,11 @@ register_model(ModelInfo(
 
 try:
     from .own_models import (
-        rollout_model,
-        verifier_model,
         contradictor_model,
         repo_aware_model,
+        rollout_model,
         spec_citation_model,
+        verifier_model,
     )
 
     register_model(ModelInfo(
@@ -256,3 +255,31 @@ except ImportError:
     # mock models still work. The lazy guard makes the failure
     # surfaced only when the user actually requests an own model.
     pass
+
+
+# Backwards-compatible public alias — older modules (and a few tests)
+# import ``REGISTRY`` rather than calling ``list_models()`` / ``get_model``.
+REGISTRY = _REGISTRY
+
+
+# ---------- finetuned-adapter re-registration ----------
+#
+# When this module is imported, attempt once to re-register any
+# previously-promoted finetuned adapters with the in-process registry.
+# This makes ``ai route --models <base>-ft-<short>`` survive a process
+# restart without operators having to re-run ``finetune adapters promote``.
+#
+# All errors are swallowed: the AI layer never depends on the finetuning
+# subsystem being present, and a missing state root must not break the
+# import path of every other module that touches ``ai.models``.
+
+def _register_promoted_once() -> None:
+    try:
+        from ..finetuning.promote import re_register_promoted
+        from ..state import State
+        re_register_promoted(State())
+    except Exception:  # noqa: BLE001
+        pass
+
+
+_register_promoted_once()

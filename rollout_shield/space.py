@@ -33,10 +33,8 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from .state import State
-
 
 VALID_POLICIES = ("shared", "device-only", "human-only")
 DEFAULT_POLICY = "shared"

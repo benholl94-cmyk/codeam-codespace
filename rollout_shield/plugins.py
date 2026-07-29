@@ -52,10 +52,10 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable
-
+from typing import Any
 
 # --- manifest validation ---
 

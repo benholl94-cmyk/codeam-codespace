@@ -30,15 +30,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
-import sys
 import time
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from ..state import State
-
 
 PREFIX_DEFAULT = Path.home() / "usr"
 
@@ -449,7 +446,7 @@ def check_controller_policy(state: State) -> CheckRecord:
 @_repair_for("controller_policy")
 def repair_controller_policy(state: State) -> RepairRecord:
     """Quarantine non-policy-compliant keys (does NOT delete them)."""
-    from ..space import load_policy, check_key_allowed, quarantine_key
+    from ..space import check_key_allowed, load_policy, quarantine_key
     policy = load_policy(state)
     actions: list[str] = []
     quarantined: list[str] = []

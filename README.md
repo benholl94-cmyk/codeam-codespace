@@ -117,6 +117,13 @@ evidence** that a rollout followed the patterns in `rollout/`.
   subcommand tree. `/api/webhooks/*` HTTP API + dashboard `Webhooks`
   tab. Atomic state at `<state_root>/webhooks/`, advisory fcntl
   lock, 44 tests. See [`docs/WEBHOOKS.md`](docs/WEBHOOKS.md).
+- **Finetuning subsystem:** complete
+  (`rollout_shield/finetuning/` — datasets, recipes, pluggable
+  backends: stdlib pattern-capture default + optional peft LoRA via
+  `[finetune]` extra, training, eval, promote, doctor). CLI tree
+  `rollout-shield finetune ...`, `/api/finetuning/*` HTTP API,
+  dashboard `Finetuning →` tab. 35+ unit tests + 8 integration tests.
+  See [`docs/FINETUNING.md`](docs/FINETUNING.md).
 - **Responsive dashboard** — breakpoints at 1024 / 768 / 480 px;
   tables scroll horizontally on mobile, nav tabs wrap, AI prompt
   row stacks. Both `index.html` and `ai-assistance.html` updated.

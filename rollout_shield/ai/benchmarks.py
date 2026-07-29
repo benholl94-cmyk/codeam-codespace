@@ -26,11 +26,8 @@ from __future__ import annotations
 import ast
 import json
 import re
-from dataclasses import dataclass, field
-from typing import Any, Callable
-
-from ..state import State
-
+from collections.abc import Callable
+from dataclasses import dataclass
 
 BenchmarkFn = Callable[[str, dict, dict], float]
 
@@ -192,6 +189,72 @@ def benchmark_has_marker(model_id: str, output: dict, ctx: dict,
         notes="marker present" if score == 1.0 else "marker missing",
         duration_ms=(time.perf_counter() - start) * 1000,
     )
+
+
+# ---------- finetuning-specific benchmarks ----------
+#
+# These three are designed for the ``finetuning`` subsystem. They
+# look at the output ``meta`` dict for adapter provenance and grade
+# on whether the adapter was actually exercised (``real``), whether
+# its run passed eval (``eval_passed``), and whether the eval drift
+# from baseline met the operator's threshold (``drift``).
+#
+# They are NOT included in ``DEFAULT_BENCHMARKS`` so they don't slow
+# down unrelated benchmark runs — call them explicitly when grading
+# a finetuned adapter.
+
+
+def benchmark_finetune_real(model_id: str, output: dict, ctx: dict) -> BenchmarkResult:
+    """Grade: 1.0 if the adapter was a real (non-stdlib) backend, 0.5 if stdlib."""
+    import time
+    start = time.perf_counter()
+    meta = (output.get("meta") or {})
+    is_real = bool(meta.get("real"))
+    backend = str(meta.get("backend") or "")
+    score = 1.0 if is_real else (0.5 if backend == "stdlib" else 0.0)
+    return BenchmarkResult(
+        name="finetune_real", model_id=model_id, score=score,
+        notes=f"backend={backend}",
+        duration_ms=(time.perf_counter() - start) * 1000,
+    )
+
+
+def benchmark_finetune_eval_passed(model_id: str, output: dict, ctx: dict) -> BenchmarkResult:
+    """Grade: 1.0 if the adapter's most-recent run reported eval_passed."""
+    import time
+    start = time.perf_counter()
+    meta = (output.get("meta") or {})
+    eval_status = str(meta.get("eval_status") or "unknown")
+    score = 1.0 if eval_status == "eval_passed" else 0.0
+    return BenchmarkResult(
+        name="finetune_eval_passed", model_id=model_id, score=score,
+        notes=f"eval_status={eval_status}",
+        duration_ms=(time.perf_counter() - start) * 1000,
+    )
+
+
+def benchmark_finetune_drift(model_id: str, output: dict, ctx: dict) -> BenchmarkResult:
+    """Grade: directly read drift_from_baseline from the eval metrics."""
+    import time
+    start = time.perf_counter()
+    meta = (output.get("meta") or {})
+    drift = meta.get("drift_from_baseline")
+    try:
+        score = max(0.0, min(1.0, float(drift))) if drift is not None else 0.0
+    except (TypeError, ValueError):
+        score = 0.0
+    return BenchmarkResult(
+        name="finetune_drift", model_id=model_id, score=score,
+        notes=f"drift={score:.3f}",
+        duration_ms=(time.perf_counter() - start) * 1000,
+    )
+
+
+FINETUNE_BENCHMARKS: list[BenchmarkFn] = [
+    benchmark_finetune_real,
+    benchmark_finetune_eval_passed,
+    benchmark_finetune_drift,
+]
 
 
 # ---------- registry ----------

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-from pathlib import Path
 
 from ..state import State
 
@@ -22,8 +21,8 @@ def cmd_verify(state: State, args: argparse.Namespace) -> int:
             result = {"ok": False, "reason": "missing signature or public key"}
             break
         try:
-            from cryptography.hazmat.primitives.serialization import load_pem_public_key
             from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives.serialization import load_pem_public_key
         except ImportError as exc:
             print(f"verify failed: cryptography package missing: {exc}",
                   file=__import__("sys").stderr)

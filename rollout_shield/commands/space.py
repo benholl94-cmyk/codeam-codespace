@@ -22,14 +22,17 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
-from ..state import State
 from ..space import (
-    VALID_POLICIES, DEFAULT_POLICY,
-    load_policy, save_policy, validate_space,
-    quarantine_key, unquarantine_key, space_info,
+    VALID_POLICIES,
+    load_policy,
+    quarantine_key,
+    save_policy,
+    space_info,
+    unquarantine_key,
+    validate_space,
 )
+from ..state import State
 
 
 def cmd_space(state: State, args: argparse.Namespace) -> int:
@@ -74,7 +77,7 @@ def _space_show(state: State, args: argparse.Namespace) -> int:
 
     print(f"controller policy: {info.policy}")
     print(f"  valid policies:  {', '.join(VALID_POLICIES)}")
-    print(f"  keys:")
+    print("  keys:")
     print(f"    total:        {info.total_keys}")
     print(f"    device:       {info.device_keys}")
     print(f"    human:        {info.human_keys}")
@@ -87,7 +90,7 @@ def _space_show(state: State, args: argparse.Namespace) -> int:
         for v in info.violations:
             print(f"    [{v[0]}] {v[1]}: {v[2]}")
     else:
-        print(f"  violations:     none")
+        print("  violations:     none")
     return 0
 
 
@@ -107,8 +110,8 @@ def _space_set_policy(state: State, args: argparse.Namespace) -> int:
         print()
         print("WARNING: changing the policy will affect future key registration + claim signing.")
         print(f"  - {target} will REJECT keys / claims by the wrong authority.")
-        print(f"  - prior non-policy-compliant keys are not auto-quarantined; "
-              f"run `rollout-shield space validate` afterwards.")
+        print("  - prior non-policy-compliant keys are not auto-quarantined; "
+              "run `rollout-shield space validate` afterwards.")
         print()
         print("pass --yes to confirm.")
         return 1

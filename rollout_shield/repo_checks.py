@@ -18,7 +18,6 @@ each failing check has a paired repair routine.
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -26,7 +25,6 @@ from typing import Any
 
 from .health_checks import HealthResult
 from .state import State
-
 
 PREFIX_DEFAULT = Path.home() / "usr"
 

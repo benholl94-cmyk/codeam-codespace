@@ -31,13 +31,11 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from ..state import State
 from .router import route
-
 
 KIND_TO_MODEL = {
     "poem": "mock-creative",

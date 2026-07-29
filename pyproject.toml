@@ -42,6 +42,18 @@ dependencies = []
 
 [project.optional-dependencies]
 crypto = ["cryptography>=41.0"]
+# `finetune` enables the `peft` backend in rollout_shield.finetuning.backends.
+# Without it only the stdlib (deterministic pattern-capture) backend is
+# available; the CLI commands and lifecycle work end-to-end without it.
+finetune = [
+  "torch>=2.1",
+  "transformers>=4.40",
+  "peft>=0.10",
+  "trl>=0.9",
+  "datasets>=2.18",
+  "accelerate>=0.27",
+  "safetensors>=0.4",
+]
 dev = [
   "pytest>=7.4",
   "pytest-cov>=4.1",
@@ -102,4 +114,5 @@ markers = [
   "integration: end-to-end integration tests",
   "security: security-sensitive tests",
   "requires_cryptography: tests that need the [crypto] extra installed",
+  "requires_finetune: tests that need the [finetune] extra installed (peft backend)",
 ]

@@ -26,10 +26,10 @@ import os
 import tempfile
 import time
 import uuid
-from dataclasses import dataclass, field
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
-
+from typing import Any
 
 SCHEMA_VERSION = 1
 DEFAULT_STATE_ROOT = Path.home() / ".rollout-shield"
@@ -97,7 +97,13 @@ class State:
         self.alerts_dir = self.root / "alerts"
         self.health_dir = self.root / "health"
         self.keys_dir = self.root / "keys"
-        for d in (self.claims_dir, self.alerts_dir, self.health_dir, self.keys_dir):
+        self.finetuning_dir = self.root / "finetuning"
+        self.finetuning_datasets_dir = self.finetuning_dir / "datasets"
+        self.finetuning_adapters_dir = self.finetuning_dir / "adapters"
+        self.finetuning_runs_dir = self.finetuning_dir / "runs"
+        for d in (self.claims_dir, self.alerts_dir, self.health_dir, self.keys_dir,
+                  self.finetuning_dir, self.finetuning_datasets_dir,
+                  self.finetuning_adapters_dir, self.finetuning_runs_dir):
             d.mkdir(parents=True, exist_ok=True)
         self._ensure_config()
 
@@ -174,10 +180,14 @@ class State:
         else:
             agent_dirs = sorted(p for p in self.claims_dir.iterdir() if p.is_dir())
         yielded = 0
+        # collect all candidate records across months/agents, then yield
+        # newest-first (descending ts). This keeps callers' ordering
+        # stable when a single month has many claims.
+        candidates: list[dict] = []
         for agent_dir in agent_dirs:
             if not agent_dir.exists():
                 continue
-            for path in sorted(agent_dir.glob("*.jsonl")):
+            for path in sorted(agent_dir.glob("*.jsonl"), reverse=True):
                 with open(path, encoding="utf-8") as fh:
                     for line in fh:
                         line = line.strip()
@@ -186,10 +196,13 @@ class State:
                         record = json.loads(line)
                         if since_ts is not None and record.get("ts", 0) < since_ts:
                             continue
-                        yield record
-                        yielded += 1
-                        if limit is not None and yielded >= limit:
-                            return
+                        candidates.append(record)
+        candidates.sort(key=lambda r: r.get("ts", 0), reverse=True)
+        for record in candidates:
+            yield record
+            yielded += 1
+            if limit is not None and yielded >= limit:
+                return
 
     def recent_claims(self, n: int = 50) -> list[dict]:
         return list(self.iter_claims(limit=n))
@@ -274,7 +287,6 @@ class State:
     # ---------- summary ----------
 
     def summary(self) -> dict:
-        from datetime import datetime, timezone
         rep = self.load_reputation()
         agents = rep.get("agents", {})
         n_claims = sum(1 for _ in self.iter_claims(limit=100000))

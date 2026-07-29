@@ -10,6 +10,22 @@ Versions are stamped by `scripts/install.sh` at the install prefix
 
 ## [unreleased]
 
+### Added — finetuning subsystem
+
+- **`rollout-shield finetune ...`** CLI subcommand tree: `dataset add/list/show/remove`, `adapters list`, `adapter show/promote/unpromote`, `run`, `runs list/show/abort`, `stats`, `doctor`, `sign-test`.
+- **`rollout_shield/finetuning/`** package — `models`, `datasets`, `adapters`, `recipes`, `training`, `evaluation`, `promote`, `doctor`, `lock`, `backends/{stdlib,peft}`.
+- **Pluggable backends** — `stdlib` (deterministic pattern-capture, default, always available) and `peft` (real LoRA via `pip install rollout-shield[finetune]`).
+- **Recipes** — `sft-mini`, `lora-tiny`, `dpo-mini` with overridable hyperparameters.
+- **Eval harness** — `exact_match`, `bleu1_proxy`, `drift_from_baseline` with a threshold gate before promotion.
+- **Adapter promotion** — registers `{base}-ft-{short8}` in `ai.models`; survives process restarts via `promoted.json` sidecar replayed at `ai.models` import time.
+- **Dashboard tab** — `interface/finetuning.html` + `interface/finetuning.js`; auto-refresh every 15s; accessible from **Finetuning →** on the index.
+- **HTTP API** — 11 endpoints under `/api/finetuning/{datasets,adapters,runs,stats,doctor}`.
+- **8 metric families** — `rollout_shield_finetuning_{datasets_total, runs_total, run_steps_total, run_duration_seconds, eval_score, adapters_total, promoted_total, storage_bytes}`.
+- **3 benchmarks** — `finetune_real`, `finetune_eval_passed`, `finetune_drift` in `ai.benchmarks.FINETUNE_BENCHMARKS`.
+- **6 plugin events** — `finetuning.{dataset.created, dataset.removed, run.started, run.completed, adapter.promoted, adapter.unpromoted}`.
+- **Tests** — `tests/test_unit_finetuning.py` (35+ cases) + `tests/test_integration_finetuning.py` (8 e2e).
+- **Docs** — `docs/FINETUNING.md` operator reference.
+
 ### Added — production-grade pimp-up
 
 - **Smart-routing binding** — government-version install stamps a

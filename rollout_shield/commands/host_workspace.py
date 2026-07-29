@@ -26,7 +26,7 @@ import sys
 import time
 from pathlib import Path
 
-from ..host_checks import all_checks_combined, aggregate_host_checks, run_host_checks
+from ..host_checks import run_host_checks
 from ..state import State
 
 
@@ -197,7 +197,7 @@ def cmd_host_workspace(state: State, args: argparse.Namespace) -> int:
         print(f"  daemon:        cycle={hb.get('cycle')} status={hb.get('last_status')} "
               f"last_beat={hb.get('last_beat_ts')}")
     else:
-        print(f"  daemon:        not running")
+        print("  daemon:        not running")
     print()
     print("ROLLOUT-SHIELD STATE")
     print(f"  state root:    {summary['state_root']}")

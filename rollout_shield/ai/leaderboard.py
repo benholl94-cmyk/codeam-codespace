@@ -10,8 +10,7 @@ Storage: ``<state_root>/ai/leaderboard.jsonl`` (append-only).
 from __future__ import annotations
 
 import json
-import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from ..state import State, atomic_append_jsonl

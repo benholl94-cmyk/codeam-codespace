@@ -20,10 +20,10 @@ import json
 import statistics
 import sys
 import time
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Callable
-
+from typing import Any
 
 __version__ = "0.1.0"
 
@@ -119,8 +119,8 @@ def bench_key_generation(tmp: Path) -> BenchResult:
         import cryptography  # noqa: F401
     except ImportError:
         return _stats("keys.new", "micro", [0.0], "SKIPPED: cryptography not installed")
-    from rollout_shield.state import State
     from rollout_shield.commands.keys import cmd_keys_new
+    from rollout_shield.state import State
     s = State(root=tmp)
     counter = {"i": 0}
     def _gen():
@@ -131,8 +131,8 @@ def bench_key_generation(tmp: Path) -> BenchResult:
 
 
 def bench_health_checks(tmp: Path) -> BenchResult:
-    from rollout_shield.state import State
     from rollout_shield.health_checks import run_all_checks
+    from rollout_shield.state import State
     s = State(root=tmp)
     samples = _time_n(lambda: run_all_checks(s), iterations=100)
     return _stats("health.state_checks", "micro", samples,
@@ -140,8 +140,8 @@ def bench_health_checks(tmp: Path) -> BenchResult:
 
 
 def bench_repo_checks(tmp: Path) -> BenchResult:
-    from rollout_shield.state import State
     from rollout_shield.repo_checks import run_repo_checks
+    from rollout_shield.state import State
     s = State(root=tmp)
     samples = _time_n(lambda: run_repo_checks(s), iterations=20)
     return _stats("health.repo_checks", "micro", samples,
@@ -149,8 +149,8 @@ def bench_repo_checks(tmp: Path) -> BenchResult:
 
 
 def bench_host_checks(tmp: Path) -> BenchResult:
-    from rollout_shield.state import State
     from rollout_shield.host_checks import run_host_checks
+    from rollout_shield.state import State
     s = State(root=tmp)
     samples = _time_n(lambda: run_host_checks(s), iterations=100)
     return _stats("health.host_checks", "micro", samples,
@@ -161,8 +161,8 @@ def bench_host_checks(tmp: Path) -> BenchResult:
 
 
 def bench_router_cold(tmp: Path) -> BenchResult:
-    from rollout_shield.state import State
     from rollout_shield.ai.router import route
+    from rollout_shield.state import State
     s = State(root=tmp)
     samples = _time_n(
         lambda: route(prompt="cold router", strategy="concat",
@@ -175,8 +175,8 @@ def bench_router_cold(tmp: Path) -> BenchResult:
 
 
 def bench_router_warm(tmp: Path) -> BenchResult:
-    from rollout_shield.state import State
     from rollout_shield.ai.router import route
+    from rollout_shield.state import State
     s = State(root=tmp)
     # warm up
     for _ in range(5):
@@ -208,10 +208,12 @@ def bench_model_warm() -> BenchResult:
 
 
 def bench_own_models_warm(tmp: Path) -> BenchResult:
-    from rollout_shield.state import State
     from rollout_shield.ai.own_models import (
-        rollout_model, repo_aware_model, spec_citation_model,
+        repo_aware_model,
+        rollout_model,
+        spec_citation_model,
     )
+    from rollout_shield.state import State
     s = State(root=tmp)
     # warm up
     for _ in range(3):

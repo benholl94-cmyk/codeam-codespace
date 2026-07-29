@@ -10,14 +10,12 @@ from __future__ import annotations
 
 import argparse
 import base64
-import hashlib
 import json
 import time
 import uuid
 from pathlib import Path
 
 from ..state import State
-
 
 VALID_TYPES = {"intent", "change", "test", "verify", "contradict", "delegate"}
 
@@ -43,7 +41,6 @@ def _sign_with_key(state: State, agent_id: str, payload_bytes: bytes) -> tuple[s
 
     try:
         from cryptography.hazmat.primitives.serialization import load_pem_private_key
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     except ImportError as exc:
         raise RuntimeError(
             "The `cryptography` package is required for signing. "
@@ -95,7 +92,7 @@ def cmd_create(state: State, agent_id: str, claim_type: str, body: str,
     ts = int(time.time())
     # find the signing key for this agent (so we can enforce the policy
     # before invoking the signer)
-    from ..space import latest_key_for_agent, enforce_policy_for_key, PolicyViolation
+    from ..space import enforce_policy_for_key, latest_key_for_agent
     key = latest_key_for_agent(state, agent_id)
     if key is None:
         raise RuntimeError(
@@ -174,7 +171,7 @@ def _claim_show(state: State, args: argparse.Namespace) -> int:
             else:
                 for k, v in c.items():
                     if k == "signing" and isinstance(v, dict):
-                        print(f"  signing:")
+                        print("  signing:")
                         for sk, sv in v.items():
                             if isinstance(sv, str) and len(sv) > 80:
                                 sv = sv[:80] + "..."

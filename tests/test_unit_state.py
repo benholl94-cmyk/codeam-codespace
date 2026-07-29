@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import time
 
-import pytest
-
 
 def test_state_root_default_is_home_rollout_shield():
     from rollout_shield.state import DEFAULT_STATE_ROOT, State
@@ -22,7 +20,7 @@ def test_state_root_override(scratch_state_root):
 
 
 def test_state_atomic_write_json_roundtrip(scratch_state_root):
-    from rollout_shield.state import atomic_write_json, SCHEMA_VERSION
+    from rollout_shield.state import SCHEMA_VERSION, atomic_write_json
     target = scratch_state_root / "config.json"
     payload = {"schema_version": SCHEMA_VERSION, "ok": True}
     atomic_write_json(target, payload)

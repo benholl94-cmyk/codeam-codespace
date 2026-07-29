@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import os
-import shutil
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -59,6 +56,23 @@ def requires_cryptography(has_cryptography):
     """Skip the test if cryptography is not installed."""
     if not has_cryptography:
         pytest.skip("cryptography not installed")
+
+
+@pytest.fixture
+def has_finetune() -> bool:
+    """True if the optional ``peft`` (and friends) deps are installed."""
+    try:
+        import peft  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+@pytest.fixture
+def requires_finetune(has_finetune):
+    """Skip the test if the [finetune] extra is not installed."""
+    if not has_finetune:
+        pytest.skip("[finetune] extra not installed (no peft)")
 
 
 @pytest.fixture
