@@ -1,0 +1,69 @@
+# Structured intake for autonomous user-task execution.
+# Consumed by .github/workflows/issue-triage.yml (auto-labels + welcome comment).
+# Use this template when filing a task that should be picked up by the agent workflow.
+
+name: Task
+description: File a task to be picked up by the autonomous user-task execution workflow.
+title: "[Task] "
+labels: ["needs-triage"]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Task title
+      description: A short, imperative summary (e.g., "Wire backend pairing in on-create.sh")
+      placeholder: Add backend pairing wiring
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Why this task exists, what needs to be done, and any relevant context.
+      placeholder: |
+        The on-create.sh script has a TODO marker for backend pairing
+        using CODEAM_AUTO_PAIR_TOKEN. This task wires that into the
+        post-create flow with safe token handling.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Beads priority (P0=critical, P4=backlog). Maps 1:1 to `bd create --priority`.
+      options:
+        - P0 (critical)
+        - P1 (high)
+        - P2 (medium)
+        - P3 (low)
+        - P4 (backlog)
+      default: 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable, observable conditions that must be true for this task to be considered done.
+      placeholder: |
+        - [ ] on-create.sh invokes codeam pair-auto with CODEAM_AUTO_PAIR_TOKEN
+        - [ ] Token is sourced from env var, never from argv or file
+        - [ ] bd create issue closed; pairing verified end-to-end in a fresh codespace
+    validations:
+      required: true
+
+  - type: textarea
+    id: related-files
+    attributes:
+      label: Related files / paths
+      description: Comma-separated list of files or paths expected to change.
+      placeholder: .devcontainer/on-create.sh, .beads/
+
+  - type: input
+    id: bd-link
+    attributes:
+      label: Beads issue ID (optional)
+      description: If a bd issue already exists for this task, paste its ID here (e.g., codeam_codespace_3021190f-abc).
