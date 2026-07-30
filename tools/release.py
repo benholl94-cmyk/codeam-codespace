@@ -103,8 +103,8 @@ def _update_changelog(version: str, summary: str, notes: str) -> None:
 def cmd_release(args: argparse.Namespace) -> int:
     # 1. snapshot first — non-negotiable
     print("[release] safeup snapshot …")
-    r = _run([sys.executable, str(SAFEUP), "snapshot",
-              "--op", f"pre-release-{args.bump}", "--root", args.root])
+    r = _run([sys.executable, str(SAFEUP), "--root", args.root, "snapshot",
+              "--op", f"pre-release-{args.bump}"])
     if r.returncode != 0:
         print(r.stdout, r.stderr, file=sys.stderr)
         return 1
