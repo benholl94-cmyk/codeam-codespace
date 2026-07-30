@@ -1,0 +1,128 @@
+{
+  "excluded_count": 601,
+  "included": [
+    {
+      "path": "BRAND.md",
+      "sha256": "19c953846804f0a8f63810768119cb3ac81905476b73498e11dfb5eff5932299",
+      "size": 6386
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "9dd6ce6ff539ee8f04d31fa254205341fb27d9232ff8e6fb3794c597c78d2a96",
+      "size": 1928
+    },
+    {
+      "path": "README.md",
+      "sha256": "2a8b12f6e5f5e14e9ab397de41ef55712e0284d153e051eda67874b9e28c1134",
+      "size": 4708
+    },
+    {
+      "path": "UNIQUE.json",
+      "sha256": "590705cafb914caf88ec4f3532467a6b2ba7d13210c336679c585f28c7af77e7",
+      "size": 309
+    },
+    {
+      "path": "UNIQUE.md",
+      "sha256": "5b93b2572f0b9e8c4c173e7f280a38d785a266e69201c61729598943a35c7b17",
+      "size": 4790
+    },
+    {
+      "path": "docs/IDENTITY.md",
+      "sha256": "e1310d9f13b7322887a174975b8790b3a8910946168199d41a33e0355bc636ef",
+      "size": 5652
+    },
+    {
+      "path": "docs/competitive-analysis.md",
+      "sha256": "d4a7c1e216fc92683ad3b69219024a54ec03ee73c71a01f1458abbb14bae9ff1",
+      "size": 14602
+    },
+    {
+      "path": "docs/deploy.md",
+      "sha256": "e1ae75e8f0b3f4ba01ce6773b1fdf4475bf7f9be0c000713a26a89839f635210",
+      "size": 4306
+    },
+    {
+      "path": "rollout_shield/__init__.py",
+      "sha256": "d46397ea90f58181d354996413a71757c2b5fa0b71f1ae9e7203ae2ce6ac69aa",
+      "size": 455
+    },
+    {
+      "path": "rollout_shield/alerter.py",
+      "sha256": "675c4a1a521a41523ba7ea58f8534720c556fb801047a0c63f6112af435c45fb",
+      "size": 5037
+    },
+    {
+      "path": "rollout_shield/audit.py",
+      "sha256": "14bf75df2c6dc5b8357222dbe84206d931a64b039dbe87a03efb828f61505a78",
+      "size": 8406
+    },
+    {
+      "path": "rollout_shield/audit_log.py",
+      "sha256": "dc3379e01af8899581c0da488d1c883c5f4240c69065189dafed1a5535118b4f",
+      "size": 2697
+    },
+    {
+      "path": "rollout_shield/cli.py",
+      "sha256": "e87f7a67bad0b22a660020419c6a4f5b2566127142ae19966b843f5903306da0",
+      "size": 33734
+    },
+    {
+      "path": "rollout_shield/health_checks.py",
+      "sha256": "0934333b0a5ffd0597cf8b6347f20073e9a79f54a9ff450178a5d6660b770453",
+      "size": 7665
+    },
+    {
+      "path": "rollout_shield/http_server.py",
+      "sha256": "a7fef73dcdfa3c8e327e3bd4b842de8984d25458bf11cce61309807ad661f41e",
+      "size": 13592
+    },
+    {
+      "path": "rollout_shield/identity.py",
+      "sha256": "c11d219dc1bda3772c68d6e1b773347780c553fbae93efc2628b0a62c03f9604",
+      "size": 20568
+    },
+    {
+      "path": "rollout_shield/monitor_daemon.py",
+      "sha256": "e1cacb832a0c78dde46ec7d5e4f9bceab8ccb74d5b1c160b673e60d8f54acb63",
+      "size": 7002
+    },
+    {
+      "path": "rollout_shield/policy_file.py",
+      "sha256": "78123d033f543bf95c1066a820346b4974018f5d9fda86513a4f365eef1e3da4",
+      "size": 2889
+    },
+    {
+      "path": "rollout_shield/state.py",
+      "sha256": "1db2e4ca4447937731ae74e62098f79071aa8c86317895ba6476b7b96c93f3ba",
+      "size": 20312
+    },
+    {
+      "path": "rollout_shield/unique.py",
+      "sha256": "08b5e417a9b78d94eec088473bc3383692efda8f587f792313742a4075d7d47b",
+      "size": 6525
+    },
+    {
+      "path": "tests/test_identity.py",
+      "sha256": "19b7b72ff8279d8fc33cad9c930d6b27c9f2ec096269bde1832a206c99dde738",
+      "size": 9723
+    },
+    {
+      "path": "tests/test_unique.py",
+      "sha256": "03a20ac69c7d9a083916a18cb865e188e36e15d36c217c69838b4e661ff64da3",
+      "size": 5669
+    },
+    {
+      "path": "tools/build_public_index.py",
+      "sha256": "87612bdcd391e255694a0c79a1a356f93ebc1593b7c2dfdebefa7e9efda6ef2c",
+      "size": 7343
+    },
+    {
+      "path": "tools/build_uniqueness.py",
+      "sha256": "281c19aafd9f0501d0e408b0357c4557a2440f10eed4855c028b0ffe359edf0b",
+      "size": 5099
+    }
+  ],
+  "manifest_hash": "c366676f1f55901cfcb56c910a277215d6aa4e185f198f6d05a67e8ba63be66b",
+  "policy": "one-way public index; externals see this only",
+  "schema_version": 1
+}

@@ -1,0 +1,39 @@
+PROPRIETARY LICENSE
+Copyright (c) 2026, the workspace author identified by the git
+committer identity in this repository (default: benholl94-cmyk
+<274793931+benholl94-cmyk@users.noreply.github.com>).
+
+All rights reserved.
+
+This repository and its contents — including but not limited to
+source code, documentation, protocol specifications, schema files,
+agent identity cards, scripts, and any derivative artifacts produced
+by tools contained herein — are the original expression of the
+author identified above and are protected by copyright under the
+Berne Convention for the Protection of Literary and Artistic Works
+(1886, last revised 1971) and equivalent national statutes in all
+member jurisdictions.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+NO PERMISSION IS GRANTED, EXPRESS OR IMPLIED, FOR ANY OF THE
+FOLLOWING WITHOUT PRIOR WRITTEN CONSENT OF THE AUTHOR:
+  - redistribution of this work, in whole or in part;
+  - modification, adaptation, or translation of this work;
+  - incorporation of this work into other works;
+  - public performance, display, or communication of this work;
+  - any commercial use of this work or its contents.
+
+Cryptographic provenance: each piece of output produced under the
+agent protocol defined in `protocol/` carries an Ed25519 signature
+bound to the agent identity declared in `agent/identity.json`. The
+signature is verifiable via `tools/verify-claim.sh` and constitutes
+a tamper-evident record of authorship at the time of signing.
+See `protocol/CLAIMS.md` for the formal model.
