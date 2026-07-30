@@ -96,16 +96,10 @@ def cmd_keys_new(state: State, agent_id: str, description: str = "") -> str:
     # private material lives in a separate, restrictive directory
     material_dir = state.root / KEYS_MATERIAL_DIRNAME
     material_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        os_chmod_private(material_dir)  # 0700
-    except OSError:
-        pass
+    os_chmod_private(material_dir)  # 0700 — G2: no silent swallow
     priv_path = material_dir / f"{key_id}.pem"
     priv_path.write_text(priv_pem)
-    try:
-        os_chmod_private(priv_path)
-    except OSError:
-        pass  # non-POSIX; permission hint only
+    os_chmod_private(priv_path)     # 0600 — G2: no silent swallow
 
     meta = {
         "id": key_id,
@@ -127,10 +121,31 @@ def os_chmod_private(path: Path) -> None:
     files get 0600 (rw for owner). Group and other bits are always zero
     so only the Owner-uid and processes running as that uid (the
     session-id-agent) can read or write.
+
+    G2 fix: refuse to silently swallow chmod failures. If the syscall
+    raises (EPERM because the process uid doesn't match the file's
+    owner; EOPNOTSUPP on a filesystem; etc.) the private PEM would
+    otherwise be left at the umask-derived mode (commonly 0644 —
+    world-readable). Raise so the operator is forced to either fix
+    the FS state or pick a different state root.
     """
     import os
     mode = 0o700 if path.is_dir() else 0o600
-    os.chmod(path, mode)
+    try:
+        os.chmod(path, mode)
+    except OSError as exc:
+        raise RuntimeError(
+            f"failed to chmod {path} to {oct(mode)}: {exc}; "
+            f"refusing to continue (key material would be "
+            f"group/world-readable)"
+        ) from exc
+    actual = path.stat().st_mode & 0o777
+    if actual != mode:
+        raise RuntimeError(
+            f"chmod {path} reported success but mode is {oct(actual)}, "
+            f"expected {oct(mode)}; FS may not honor mode bits; "
+            f"refusing to continue"
+        )
 
 
 def _fingerprint_pubkey(pub_pem: str) -> str:
