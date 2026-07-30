@@ -9,6 +9,16 @@
           }
         ],
         "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "cat .claude/skills/judgement-debug-workflow/SKILL.md",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "startup|resume|clear|compact"
       }
     ]
   }
