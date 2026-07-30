@@ -10,5 +10,5 @@ Composes with the spec docs in `protocol/`, `agent/`, `rollout/`,
 `hardware/`, and the existing scripts in `tools/`.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __all__ = ["cli", "state", "monitor_daemon", "http_server", "health_checks", "alerter"]

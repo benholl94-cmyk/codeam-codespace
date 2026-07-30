@@ -1,0 +1,3 @@
+# Marker file (PEP 561) — declares rollout_shield as a typed package.
+# Downstream type-checkers (mypy, pyright) will use the inline type
+# annotations in the .py files when consumers import this package.

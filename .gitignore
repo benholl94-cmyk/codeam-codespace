@@ -31,6 +31,12 @@ __pycache__/
 private/
 secrets/
 
+# Python packaging build artifacts (created by `pip install -e .` or
+# `python -m build`). The package source itself is tracked.
+*.egg-info/
+build/
+dist/
+
 # Android Studio / Gradle / IntelliJ artifacts (created by build-on-termux.sh
 # or by opening android-app/ in Android Studio). The android-app/ source tree
 # itself IS tracked; only the build outputs are excluded.

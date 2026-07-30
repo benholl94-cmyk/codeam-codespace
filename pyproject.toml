@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rollout-shield"
+version = "0.3.0"
+description = "Hardware+software platform for repo-safe-rollouts. Zero-leak at rest, owner-unlock gated, loopback-only by default."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "the workspace author (git committer)", email = "benholl94-cmyk@users.noreply.github.com" },
+]
+keywords = [
+    "rollout", "release", "supply-chain", "zero-leak", "owner-controlled",
+    "audit", "claim", "reputation", "agent-identity",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "License :: Other/Proprietary License",
+    "Operating System :: POSIX",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: System :: Software Distribution",
+]
+dependencies = [
+    "cryptography>=41.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.0",
+    "setuptools>=68",
+    "wheel>=0.41",
+]
+android = [
+    # Android-side: nothing Python-side; the APK is built with gradle in android-app/
+]
+deploy = [
+    # Docker / compose bundle assembly needs only stdlib
+]
+
+[project.scripts]
+rollout-shield = "rollout_shield.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/benholl94-cmyk/codeam-codespace"
+Source = "https://github.com/benholl94-cmyk/codeam-codespace"
+Changelog = "https://github.com/benholl94-cmyk/codeam-codespace/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["rollout_shield*"]
+exclude = ["tests*", "tools*", "android-app*", "docs*"]
+
+[tool.setuptools.package-data]
+rollout_shield = [
+    "interface/*.html",
+    "interface/*.js",
+    "interface/*.css",
+    "py.typed",
+]
+
+[tool.setuptools.exclude-package-data]
+rollout_shield = ["__pycache__", "*.pyc"]
