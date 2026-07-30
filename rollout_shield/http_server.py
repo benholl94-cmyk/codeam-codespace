@@ -54,6 +54,7 @@ _RATE_BUCKET = TokenBucket(capacity=10, refill_per_sec=1.0) if _HAS_DEPLOY else 
 class DashboardHandler(BaseHTTPRequestHandler):
     server_version = "rollout-shield/0.1.1"
     state: State  # set by `make_handler`
+    api_token: str | None = None  # G6: bearer token; set by `make_handler`
 
     # ---------- response helpers ----------
 
@@ -123,6 +124,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
         rel = path.lstrip("/")
         if rel.startswith("static/"):
+            # B7: refuse path traversal. Resolve the candidate path
+            # and require it to live inside INTERFACE_DIR. Without
+            # this, a request for `/static/../../../../etc/passwd`
+            # resolves to ``INTERFACE_DIR / 'static/../../../../etc/passwd'``
+            # which can escape the interface directory and disclose
+            # any file readable by the http_server uid.
+            try:
+                candidate = (INTERFACE_DIR / rel).resolve()
+                interface_root = INTERFACE_DIR.resolve()
+                if not candidate.is_relative_to(interface_root):
+                    self._send_json(403, {"error": "forbidden",
+                                          "path": rel})
+                    return
+            except OSError:
+                self._send_json(400, {"error": "bad_path", "path": rel})
+                return
             self._send_file(INTERFACE_DIR / rel)
             return
         # Fallback: SPA-style serve index.html for unknown paths under /
@@ -134,18 +151,46 @@ class DashboardHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:  # noqa: A002 — http.server API
         sys.stderr.write("[dashboard] " + (format % args) + "\n")
 
+    # ---------- auth (G6) ----------
+
+    def _check_auth(self) -> bool:
+        """Verify the request carries a matching bearer token.
+
+        When ``api_token`` is ``None`` (loopback-only default), auth
+        is disabled. When set, the request MUST include an
+        ``Authorization: Bearer <token>`` header with a token that
+        matches (constant-time comparison via ``hmac.compare_digest``).
+        """
+        import hmac, hashlib
+        expected = self.api_token
+        if not expected:
+            return True
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return False
+        presented = auth[len("Bearer "):].strip()
+        if not presented:
+            return False
+        return hmac.compare_digest(
+            hashlib.sha256(presented.encode("utf-8")).digest(),
+            hashlib.sha256(expected.encode("utf-8")).digest(),
+        )
+
     # ---------- API handlers ----------
 
     def _route_api(self, path: str, query: dict) -> None:
+        if not self._check_auth():
+            self._send_json(401, {"error": "unauthorized"})
+            return
         try:
             if path == "/api/health":
                 latest = self.state.latest_health()
                 self._send_json(200, latest or {"status": "unknown", "ts": None})
             elif path == "/api/claims":
-                limit = int(query.get("limit", ["50"])[0])
+                limit = self._clamp_limit(query.get("limit", ["50"])[0])
                 self._send_json(200, {"claims": self.state.recent_claims(limit)})
             elif path == "/api/alerts":
-                limit = int(query.get("limit", ["50"])[0])
+                limit = self._clamp_limit(query.get("limit", ["50"])[0])
                 self._send_json(200, {"alerts": self.state.recent_alerts(limit)})
             elif path == "/api/reputation":
                 self._send_json(200, self.state.load_reputation())
@@ -164,12 +209,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception as exc:  # noqa: BLE001 — never expose stack traces to the browser
             self._send_json(500, {"error": "internal", "message": repr(exc)})
 
+    @staticmethod
+    def _clamp_limit(raw: str) -> int:
+        """Clamp ``?limit=`` to a sane range [1, 1000] (B2/B3).
 
-def make_handler(state: State):
-    """Create a request handler class bound to the given state."""
+        The endpoint already iterates JSONL on disk; an unbounded
+        value would let an attacker DoS the server. Default 50.
+        """
+        try:
+            n = int(raw)
+        except (TypeError, ValueError):
+            return 50
+        return max(1, min(n, 1000))
+
+
+def make_handler(state: State, api_token: str | None = None):
+    """Create a request handler class bound to the given state.
+
+    Args:
+        state: the State instance to read from.
+        api_token: G6 bearer token. When non-None, requests to
+            /api/* MUST include ``Authorization: Bearer <token>``
+            with a matching value (constant-time compare). When
+            None (loopback-only default), auth is disabled.
+    """
     class _Bound(DashboardHandler):
         pass
     _Bound.state = state
+    _Bound.api_token = api_token
     return _Bound
 
 
@@ -183,6 +250,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--i-know-bind-is-public", dest="public_confirm",
                         action="store_true",
                         help="REQUIRED when --host is 0.0.0.0 / public (acknowledgment)")
+    parser.add_argument("--api-token-file", dest="api_token_file",
+                        type=Path, default=None,
+                        help=("G6: path to a file containing the bearer "
+                              "token (chmod 0600). When set, /api/* "
+                              "requires 'Authorization: Bearer <token>'. "
+                              "Omit on loopback-only deployments."))
     args = parser.parse_args(argv)
 
     # Pop-off #5: refuse public bind without explicit confirmation
@@ -196,8 +269,33 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    # G6: load bearer token if configured; warn if file is loose
+    api_token: str | None = None
+    if args.api_token_file is not None:
+        try:
+            api_token = args.api_token_file.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            print(f"[dashboard] cannot read --api-token-file: {exc}",
+                  file=sys.stderr)
+            return 2
+        if not api_token:
+            print("[dashboard] --api-token-file is empty; refusing to start",
+                  file=sys.stderr)
+            return 2
+        try:
+            mode = args.api_token_file.stat().st_mode & 0o777
+            if mode & 0o077:
+                print(
+                    f"[dashboard] WARNING: --api-token-file has mode "
+                    f"{oct(mode)}; group/world bits should be zero. "
+                    f"chmod 0600 recommended.",
+                    file=sys.stderr,
+                )
+        except OSError:
+            pass
+
     state = State(root=args.state_root)
-    handler_cls = make_handler(state)
+    handler_cls = make_handler(state, api_token=api_token)
     server = ThreadingHTTPServer((args.host, args.port), handler_cls)
 
     url = f"http://{args.host}:{args.port}/"
