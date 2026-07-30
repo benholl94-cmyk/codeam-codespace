@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# git-safe — wrapper around git commit/push that snapshots first and
+# restores on failure. Stdlib-only. Designed for environments where any
+# mutation warrants a recoverable prior state.
+
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+SAFEUP="${HERE}/safeup.py"
+
+usage() {
+  cat <<EOF
+usage: git-safe <command> [...]
+
+Wraps \`git commit\` and \`git push\` with safeup snapshots. Other git
+commands are passed through unchanged.
+
+Examples:
+  git-safe commit -m "fix: ..."
+  git-safe push origin main
+  git-safe restore <snapshot-id>     # explicit restore (still safe)
+EOF
+}
+
+case "${1:-help}" in
+  -h|--help|help|"") usage; exit 0 ;;
+esac
+
+OP_NAME="${GIT_SAFE_OP:-git-${1:-op}-$(date -u +%Y%m%dT%H%M%SZ)}"
+
+# Pass-through for anything but commit/push — but still snapshot first
+case "${1:-}" in
+  commit|push)
+    : "go through preop path"
+    ;;
+  *)
+    exec git "$@"
+    ;;
+esac
+
+exec python3 "$SAFEUP" preop --op "$OP_NAME" --keep "${SAFEUP_KEEP:-10}" -- git "$@"

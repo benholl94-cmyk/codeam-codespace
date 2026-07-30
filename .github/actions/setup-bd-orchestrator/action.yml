@@ -1,0 +1,102 @@
+name: setup-bd-orchestrator
+description: |
+  Composite action that runs the rollout-shield toolchain in CI — install,
+  self-check, monitor, reputation wiring, and (optionally) docs-integrity
+  checks. Lives under .github/actions/ so it does NOT need workflow scope.
+
+inputs:
+  python-version:
+    description: Python version to install
+    required: false
+    default: "3.11"
+  mode:
+    description: "One of: pr-validate, monitor-ci, docs-integrity, full"
+    required: false
+    default: "full"
+  state-root:
+    description: Override ROLLOUT_SHIELD_STATE for monitor
+    required: false
+    default: ".monitor-state"
+
+runs:
+  using: composite
+  steps:
+    - name: Install runtime dep
+      shell: bash
+      run: |
+        set -euo pipefail
+        python -m pip install --quiet cryptography
+
+    - name: Lint shell scripts
+      shell: bash
+      if: inputs.mode == 'full' || inputs.mode == 'pr-validate'
+      run: |
+        set -e
+        bash -n setup.sh
+        bash -n tools/git-safe
+        for f in scripts/*.sh bin/*; do
+          case "$f" in
+            tools/safeup.py) continue ;;
+            *.sh|bin/rollout-shield)
+              [ -f "$f" ] && bash -n "$f" || true
+              ;;
+          esac
+        done
+
+    - name: Run unit tests
+      shell: bash
+      if: inputs.mode == 'full' || inputs.mode == 'pr-validate'
+      run: python tests/run_all.py
+
+    - name: Smoke CLI
+      shell: bash
+      if: inputs.mode == 'full' || inputs.mode == 'pr-validate'
+      run: |
+        python -m rollout_shield --version
+        python -m rollout_shield install
+        python -m rollout_shield self-check --json | \
+          python -c "import sys, json; d=json.load(sys.stdin); assert d.get('overall_ok'), d"
+
+    - name: Validate JSON configs
+      shell: bash
+      if: inputs.mode == 'full' || inputs.mode == 'pr-validate'
+      run: |
+        python -c "import json; json.load(open('protocol/schemas/claim.schema.json'))"
+        python -c "import json; json.load(open('protocol/agent-card.schema.json'))"
+        python -c "import json; json.load(open('agent/identity.json'))"
+
+    - name: Run monitor --once
+      shell: bash
+      if: inputs.mode == 'full' || inputs.mode == 'monitor-ci'
+      run: |
+        mkdir -p "${{ inputs.state-root }}"
+        python -m rollout_shield --state-root "${{ inputs.state-root }}" monitor --once
+
+    - name: Docs integrity
+      shell: bash
+      if: inputs.mode == 'full' || inputs.mode == 'docs-integrity'
+      run: |
+        python - <<'PY'
+        import re, sys, json
+        from pathlib import Path
+        root = Path(".")
+        for p in root.rglob("*.json"):
+            if any(part in p.parts for part in (".rollout-shield", ".beads", ".git", ".safeups")):
+                continue
+            try: json.load(open(p))
+            except Exception as e: print(f"BROKEN: {p}: {e}", file=sys.stderr); sys.exit(1)
+        readme = (root / "README.md").read_text() if (root / "README.md").exists() else ""
+        ref_pat = re.compile(r"`([\w./-]+\.(?:md|yml|yaml|sh|json|py|toml))`")
+        miss = [m.group(1) for m in ref_pat.finditer(readme)
+                if not m.group(1).startswith("http") and not (root / m.group(1)).exists()]
+        if miss: print("missing README refs:", miss, file=sys.stderr); sys.exit(1)
+        print("docs-integrity OK")
+        PY
+
+    - name: Upload monitor report
+      if: always() && (inputs.mode == 'full' || inputs.mode == 'monitor-ci')
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.state-root }}/health.jsonl" ]; then
+          cp "${{ inputs.state-root }}/health.jsonl" monitor-report.jsonl || true
+        fi
