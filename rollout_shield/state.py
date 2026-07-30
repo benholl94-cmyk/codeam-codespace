@@ -21,6 +21,7 @@ the monitor daemon, and the HTTP API all share a single State instance
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -30,9 +31,76 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterator
 
+try:  # POSIX-only; Windows uses a different scheme
+    import fcntl as _fcntl  # type: ignore[import-not-found]
+    _HAS_FCNTL = True
+except ImportError:  # pragma: no cover - non-POSIX
+    _fcntl = None  # type: ignore[assignment]
+    _HAS_FCNTL = False
+
 
 SCHEMA_VERSION = 1
 DEFAULT_STATE_ROOT = Path(os.environ.get("ROLLOUT_SHIELD_STATE", ".rollout-shield"))
+
+
+class StateLockError(RuntimeError):
+    """Raised when the state root cannot be locked for write.
+
+    Caught by callers and surfaced as an actionable message rather than a raw
+    ``BlockingIOError`` or ``PermissionError`` traceback.
+    """
+
+
+def lock_path(state_root: Path) -> Path:
+    """Return the path of the state write-lock file (``<root>/.write.lock``).
+
+    The lock is advisory: it prevents two writer processes (monitor + CLI)
+    from interleaving atomic_write_json calls, but does not block readers.
+    """
+    return Path(state_root) / ".write.lock"
+
+
+@contextlib.contextmanager
+def write_lock(state_root: Path, blocking: bool = True):
+    """Acquire the per-state write lock. Use as a context manager:
+
+        with write_lock(state.root):
+            state.save_config({...})
+
+    Locks are auto-released on exit. On non-POSIX systems, the lock is a no-op
+    (single-process tests still pass; multi-process safety reduces to
+    "trust the OS"). The lock file is created lazily and reused.
+    """
+    lockfile = lock_path(state_root)
+    lockfile.parent.mkdir(parents=True, exist_ok=True)
+    fh = None
+    try:
+        if _HAS_FCNTL:
+            fh = open(lockfile, "w", encoding="utf-8")
+            mode = _fcntl.LOCK_EX if blocking else _fcntl.LOCK_EX | _fcntl.LOCK_NB
+            try:
+                _fcntl.flock(fh.fileno(), mode)
+            except BlockingIOError as exc:
+                # Detach fh so the finally-block's flock+close don't operate
+                # on the already-closed handle.
+                closed_fh = fh
+                fh = None
+                closed_fh.close()
+                raise StateLockError(
+                    f"another writer holds the state lock at {lockfile}; "
+                    f"set blocking=False to fail fast, or wait and retry"
+                ) from exc
+        else:  # pragma: no cover - non-POSIX branch
+            fh = open(lockfile, "w", encoding="utf-8")
+        yield fh
+    finally:
+        if fh is not None:
+            if _HAS_FCNTL:
+                try:
+                    _fcntl.flock(fh.fileno(), _fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            fh.close()
 
 
 @dataclass
@@ -52,13 +120,31 @@ def atomic_write_json(path: Path, data: Any) -> None:
     content, never a partial write. POSIX rename is atomic on the same
     filesystem.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        raise StateLockError(
+            f"cannot create state directory {path.parent}: {exc}; "
+            f"check filesystem permissions or set ROLLOUT_SHIELD_STATE to a "
+            f"writable location"
+        ) from exc
+
     fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2, sort_keys=True, ensure_ascii=False)
             fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
         os.replace(tmp_name, path)
+        # fsync the directory so the rename itself is durable on POSIX
+        dir_fd = os.open(str(path.parent), os.O_DIRECTORY)
+        try:
+            os.fsync(dir_fd)
+        except OSError:
+            pass  # not all filesystems support dir fsync
+        finally:
+            os.close(dir_fd)
     except Exception:
         try:
             os.unlink(tmp_name)

@@ -107,6 +107,11 @@ def cmd_create(state: State, agent_id: str, claim_type: str, body: str,
     claim = _make_claim(agent_id, claim_type, body, parent, ts,
                         key_id, signature, pub_pem)
     state.append_claim(claim)
+    # record a small reputation event for honest claim emission
+    try:
+        state.update_reputation(agent_id, 0.02, f"claim:{claim_type}")
+    except Exception:
+        pass  # reputation is best-effort — never block emission
     return claim
 
 

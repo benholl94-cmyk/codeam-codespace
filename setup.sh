@@ -3,7 +3,10 @@
 #
 # Sets up the runtime on a fresh checkout:
 #   1. Verifies Python 3.8+ is available
-#   2. Verifies pip can install the optional `cryptography` dep
+#   2. Ensures `cryptography` is importable; if not, installs via pip with
+#      a tiered fallback chain (--user → --user --break-system-packages →
+#      --break-system-packages). Skips pip entirely when the module is
+#      already importable — fixes the Debian/PEP 668 hard-fail path.
 #   3. Installs the package in editable / sys.path-friendly mode
 #   4. Runs `rollout-shield install` to create state dirs + default key
 #   5. Prints next steps
@@ -12,6 +15,7 @@
 #   ./setup.sh                # full setup
 #   ./setup.sh --no-deps      # skip pip install (use system packages)
 #   ./setup.sh --state-root DIR  # override state root
+#   ./setup.sh --python PY    # override python interpreter
 
 set -euo pipefail
 
@@ -27,7 +31,7 @@ while [[ $# -gt 0 ]]; do
     --state-root) STATE_ROOT="$2"; shift 2 ;;
     --python) PYTHON="$2"; shift 2 ;;
     -h|--help)
-      sed -n '2,20p' "$0"
+      sed -n '2,22p' "$0"
       exit 0
       ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -45,13 +49,33 @@ if ! command -v "$PYTHON" >/dev/null 2>&1; then
   exit 1
 fi
 
-# 2. cryptography install
+# 2. cryptography ensure — probe first; only invoke pip when truly missing.
+#    PEP 668 / Debian-packaged Python refuses `pip install --user` even when
+#    cryptography is already importable, so a naïve "always pip install"
+#    hard-fails fresh checkout on those systems.
 if [[ "$INSTALL_DEPS" -eq 1 ]]; then
-  echo ">> installing runtime dependency: cryptography"
-  if ! "$PYTHON" -m pip install --quiet --user cryptography; then
-    echo "FAIL: pip install cryptography failed" >&2
-    echo "      try: $PYTHON -m pip install cryptography" >&2
-    exit 1
+  echo ">> ensuring runtime dependency: cryptography"
+  if "$PYTHON" -c "import cryptography, sys; sys.exit(0 if getattr(cryptography, '__version__', None) else 1)" 2>/dev/null; then
+    CRYPTO_VER="$("$PYTHON" -c "import cryptography; print(cryptography.__version__)")"
+    echo "   already importable (version: ${CRYPTO_VER}); skipping pip install"
+  else
+    INSTALLED=0
+    for PIP_ARGS in "--user" "--user --break-system-packages" "--break-system-packages"; do
+      echo "   attempting: $PYTHON -m pip install --quiet ${PIP_ARGS} cryptography"
+      if "$PYTHON" -m pip install --quiet ${PIP_ARGS} cryptography 2>/dev/null; then
+        INSTALLED=1
+        break
+      fi
+    done
+    if [[ "$INSTALLED" -ne 1 ]]; then
+      echo "FAIL: could not install cryptography via pip." >&2
+      echo "      options:" >&2
+      echo "        - Debian/Ubuntu: sudo apt-get install -y python3-cryptography" >&2
+      echo "        - venv:          $PYTHON -m venv .venv && .venv/bin/pip install cryptography" >&2
+      echo "        - pipx:          pipx install cryptography" >&2
+      echo "        - force:         $PYTHON -m pip install --break-system-packages cryptography" >&2
+      exit 1
+    fi
   fi
 fi
 
