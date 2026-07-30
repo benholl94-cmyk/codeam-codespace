@@ -26,7 +26,7 @@ from .state import State, atomic_write_json
 
 
 def _cmd_install(args: argparse.Namespace) -> int:
-    import os as _os
+    import os as _os, subprocess, sys as _sys
     state = State(root=args.state_root)
     # Lock the state root and private subdirs to Owner-only (0700).
     # This is what makes the Owner-uuid + session-id-agent the only
@@ -59,6 +59,38 @@ def _cmd_install(args: argparse.Namespace) -> int:
     print("  rollout-shield status")
     print("  rollout-shield monitor --once")
     print("  rollout-shield dashboard")
+
+    # A3: per user rule ("by conflicts start subp to hotpatch"), spawn
+    # the audit in a fresh subprocess so a buggy audit cannot corrupt
+    # the install we just finished. Failures here are non-fatal — the
+    # audit result is informational; the install succeeded.
+    try:
+        result = subprocess.run(
+            [_sys.executable, "-m", "rollout_shield", "audit",
+             "--state-root", str(state.root), "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            try:
+                import json as _json
+                report = _json.loads(result.stdout)
+                if report.get("ok"):
+                    print(f"  audit:           clean (9 known keys, 0 unknown, "
+                          f"{len(report.get('suspect_bytes', []))} suspect bytes, "
+                          f"{len(report.get('json_parse_errors', []))} JSON errors)")
+                else:
+                    print(f"  audit:           DRIFT DETECTED — run "
+                          f"`rollout-shield audit --state-root {state.root}`")
+            except Exception:
+                print(f"  audit:           (could not parse audit output)")
+        else:
+            # Audit found drift. Don't fail the install — just announce.
+            print(f"  audit:           drift detected (returncode={result.returncode}); "
+                  f"run `rollout-shield audit --state-root {state.root}`")
+    except (subprocess.SubprocessError, OSError) as exc:
+        # Audit subprocess failure must not roll back a successful install.
+        print(f"  audit:           could not run ({exc})", file=_sys.stderr)
+
     return 0
 
 
@@ -82,6 +114,47 @@ def _cmd_status(args: argparse.Namespace) -> int:
         print(f"  latest health:   {latest.get('status', 'unknown')} "
               f"({latest.get('ok', 0)}/{latest.get('total', 0)} ok, ts={latest.get('ts')})")
     return 0
+
+
+def _cmd_audit(args: argparse.Namespace) -> int:
+    """Scan the state root for drift (registry / bytes / JSON / perms).
+
+    When --repair is passed, deletes unknown config keys from
+    config.json; refuses content-level fixes (suspect bytes, JSON
+    errors, loose key files). Operators must address those by hand.
+    """
+    from .audit import audit_state_root, repair_state_root
+    if args.state_root is None:
+        # fall back to the env-default state root
+        from .state import DEFAULT_STATE_ROOT
+        state_root = Path(DEFAULT_STATE_ROOT)
+    else:
+        state_root = args.state_root
+    rep = audit_state_root(state_root)
+    if args.repair and not rep.ok:
+        result = repair_state_root(rep)
+        if args.json:
+            print(json.dumps({"report": rep.to_dict(),
+                              "repair": result}, indent=2,
+                             sort_keys=True, default=str))
+        else:
+            print(f"repair: deleted {len(result.get('deleted_keys', []))} orphan keys")
+            print(f"        refused {result.get('refused_suspect_bytes', 0)} suspect-byte issues")
+            print(f"        refused {result.get('refused_json_errors', 0)} JSON errors")
+            print(f"        refused {result.get('refused_loose_keys', 0)} loose key files")
+    else:
+        if args.json:
+            print(json.dumps(rep.to_dict(), indent=2,
+                             sort_keys=True, default=str))
+        else:
+            print(f"state_root: {rep.state_root}")
+            print(f"  unknown_keys:      {rep.unknown_keys}")
+            print(f"  unused_keys:       {rep.unused_keys}")
+            print(f"  suspect_bytes:     {len(rep.suspect_bytes)}")
+            print(f"  json_parse_errors: {len(rep.json_parse_errors)}")
+            print(f"  loose_key_files:   {len(rep.loose_key_files)}")
+            print(f"  OK: {rep.ok}")
+    return 0 if rep.ok else 1
 
 
 def _cmd_keys(args: argparse.Namespace) -> int:
@@ -388,6 +461,14 @@ def build_parser() -> argparse.ArgumentParser:
     # self-check
     p = sub.add_parser("self-check", help="diagnose environment", parents=[common])
     p.set_defaults(func=_cmd_self_check)
+
+    # audit — registry / bytes / JSON / permission drift detector (A2)
+    p = sub.add_parser("audit",
+                       help="scan state root for drift (registry / bytes / JSON / perms)",
+                       parents=[common])
+    p.add_argument("--repair", action="store_true",
+                   help="delete unknown config keys; refuse content-level fixes")
+    p.set_defaults(func=_cmd_audit)
 
     # deploy (generate or check a deploy bundle)
     p = sub.add_parser("deploy", help="generate / verify a deploy bundle",
