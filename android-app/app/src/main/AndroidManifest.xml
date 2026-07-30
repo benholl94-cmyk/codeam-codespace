@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    rollout-shield dashboard — native Android app
+
+    SECURITY MODEL (zero-leak, owner-only):
+      * NO <uses-permission android:name="android.permission.INTERNET" />
+        — the app has no internet capability, period.
+      * All network is blocked at the OS level by network_security_config.xml
+        (cleartext blocked; all domains denied).
+      * The HTTP server inside the app binds to 127.0.0.1 ONLY
+        (not the WiFi/cellular interface). It is reachable only by
+        this app's own WebView, which loads http://127.0.0.1:8765/.
+      * Owner-unlock-gated: the app refuses to start the WebView until
+        the Fernet unlock file is present at filesDir/owner_unlock.
+        Without it, the app shows an "Unlock required" screen.
+      * Persistent state lives in the app's private filesDir (NOT
+        external storage), so other apps on the device cannot read it
+        without root.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+        NO INTERNET PERMISSION. The app physically cannot reach the
+        network. This is the strongest possible privacy guarantee
+        Android offers.
+    -->
+
+    <application
+        android:label="rollout-shield"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="false"
+        android:hardwareAccelerated="true"
+        android:theme="@style/Theme.RolloutShield"
+        tools:targetApi="34">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="rollout-shield"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
+</manifest>

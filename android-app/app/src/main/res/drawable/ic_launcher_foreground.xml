@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    ic_launcher_foreground.xml — vector shield + R monogram.
+
+    Drawn as a flat vector path; rasterizes at any density without
+    requiring PNG assets. The shield outline + bold "R" letter form
+    are the rollout-shield brand mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- shield outline (centered in 108x108 safe zone) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,22
+                          L82,32
+                          L82,60
+                          C82,74 70,84 54,90
+                          C38,84 26,74 26,60
+                          L26,32
+                          Z"/>
+
+    <!-- bold R letterform -->
+    <path
+        android:fillColor="#0E5C3A"
+        android:pathData="M44,42
+                          L62,42
+                          C68,42 72,46 72,52
+                          C72,56 70,59 67,61
+                          L74,72
+                          L66,72
+                          L60,62
+                          L52,62
+                          L52,72
+                          L44,72
+                          Z
+                          M52,48
+                          L52,56
+                          L60,56
+                          C62,56 64,54 64,52
+                          C64,50 62,48 60,48
+                          Z"/>
+
+</vector>

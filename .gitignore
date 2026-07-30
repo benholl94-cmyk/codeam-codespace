@@ -30,3 +30,16 @@ __pycache__/
 *.p12
 private/
 secrets/
+
+# Android Studio / Gradle / IntelliJ artifacts (created by build-on-termux.sh
+# or by opening android-app/ in Android Studio). The android-app/ source tree
+# itself IS tracked; only the build outputs are excluded.
+android-app/.gradle/
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+android-app/build.log
+android-app/captures/
+android-app/.idea/
+*.iml
+.kotlin/

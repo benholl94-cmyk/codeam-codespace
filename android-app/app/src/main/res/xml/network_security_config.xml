@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    network_security_config.xml — deny ALL non-loopback traffic.
+
+    The <base-config cleartextTrafficPermitted="false"> blocks every
+    cleartext destination, even 127.0.0.1, at the URLConnection layer.
+
+    The 127.0.0.1 loopback exception below re-allows ONLY the local
+    dashboard server that this app itself binds. Combined with the
+    manifest's <uses-permission> INTERNET being absent, this means:
+
+      * The OS will refuse to route any traffic off-device.
+      * WebView can only load http://127.0.0.1:8765/ (or HTTPS to
+        anywhere — but with no DNS, that fails too).
+      * No telemetry, no analytics, no crash reporting — the app has
+        nowhere to send them.
+
+    Trust-anchor configuration is left at defaults (system + user).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+        Single, explicit exception: the app's own loopback dashboard.
+        Bound to 127.0.0.1 (IPv4 loopback only); NOT 0.0.0.0 / wildcard.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
