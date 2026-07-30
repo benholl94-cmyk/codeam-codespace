@@ -44,6 +44,16 @@ except Exception:
         pass
 
 ROOT = Path(__file__).resolve().parent.parent
+try:
+    sys.path.insert(0, str(ROOT / "tools"))
+    import integrity as _integrity
+    _integrity.verify_self_or_die()
+except SystemExit:
+    raise
+except Exception:
+    pass
+
+
 sys.path.insert(0, str(ROOT))
 
 
