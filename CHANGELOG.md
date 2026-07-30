@@ -2,6 +2,35 @@
 
 
 
+
+## v0.3.0 — 2026-07-30
+
+Pip-installable rollout-shield v0.3.0: pyproject.toml with PEP 621 metadata + 'rollout-shield' console-script entry point + OWNER-FIRST-LICENSE.md (custom zero-leak proprietary license with 7 explicit sections including Owner's rights, third-party prohibitions, architectural guarantees).
+
+## Highlights
+- **pip-installable** — 'pip install -e .' (or 'pip install .') on any Python 3.10+ host installs the 'rollout-shield' console script (entry point: rollout_shield.cli:main)
+- **pyproject.toml** (PEP 621): setuptools backend, requires-python >=3.10, deps = ['cryptography>=41.0.0'] (Fernet), dev/android/deploy optional-dependency groups, py.typed marker (PEP 561)
+- **OWNER-FIRST-LICENSE.md** — custom proprietary license:
+  - Section 1 — Owner's rights (unrestricted)
+  - Section 2 — Third-party prohibitions (no telemetry, no exfil, no deanonymization, no bypass)
+  - Section 3 — Architectural guarantees (no outbound network, encrypted at rest, tamper-evident audit, loopback by default, owner-unlock gating)
+  - Section 4-7 — No warranty, termination, governing law, entire agreement
+- **Verified end-to-end** on this box in clean venv: pip install, --version (0.3.0), --help (10 subcommands), deploy bundle, deploy check
+- **10 new tests** (pyproject metadata, OWNER-FIRST clauses, CLI import, version output, all subcommands --help). Total 52/52 pass
+
+## What the user does on their hardware
+```sh
+# on Termux (Android) or any Linux box with Python 3.10+
+git clone https://github.com/benholl94-cmyk/codeam-codespace
+cd codeam-codespace
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .                       # or 'pip install .' for non-editable
+rollout-shield --version               # 'rollout-shield 0.3.0'
+rollout-shield install
+rollout-shield dashboard               # bound to 127.0.0.1:8765
+```
+
 ## v0.2.0 — 2026-07-30
 
 Native Android app v0.2.0: real APK (NOT PWA) with homescreen icon, loopback-only HTTP server inside the app, no INTERNET permission, owner-unlock gated. Built with Kotlin + Gradle (AndroidX only, no third-party UI deps).
