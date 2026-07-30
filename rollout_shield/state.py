@@ -297,6 +297,11 @@ class State:
 
     def claim_path(self, agent_id: str, ts: int | None = None) -> Path:
         from datetime import datetime, timezone
+        # Defense in depth: even though the CLI validates, reject any
+        # agent_id that could escape the state root if it ever reaches
+        # this layer (e.g. via direct API call).
+        from .commands.keys import validate_agent_id
+        validate_agent_id(agent_id)
         dt = datetime.fromtimestamp(ts or time.time(), tz=timezone.utc)
         return self.claims_dir / agent_id / f"{dt.strftime('%Y-%m')}.jsonl"
 
@@ -313,6 +318,8 @@ class State:
                     since_ts: int | None = None,
                     limit: int | None = None) -> Iterator[dict]:
         if agent_id:
+            from .commands.keys import validate_agent_id
+            validate_agent_id(agent_id)
             agent_dirs = [self.claims_dir / agent_id]
         else:
             agent_dirs = sorted(p for p in self.claims_dir.iterdir() if p.is_dir())

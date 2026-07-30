@@ -120,6 +120,14 @@ def cmd_claim(state: State, args: argparse.Namespace) -> int:
     if sub == "list":
         return _claim_list(state, args)
     if sub == "create":
+        # Reject any agent_id that could escape the state root before
+        # the claim is signed or written.
+        from .keys import validate_agent_id
+        try:
+            validate_agent_id(args.agent_id)
+        except ValueError as exc:
+            print(f"error: {exc}", file=__import__("sys").stderr)
+            return 2
         try:
             claim = cmd_create(state, agent_id=args.agent_id, claim_type=args.type,
                                body=args.body, parent=args.parent)

@@ -27,6 +27,36 @@ from ..state import State, atomic_write_json
 KEYS_MATERIAL_DIRNAME = "keys_material"
 
 
+# Strict ID validation. Owner-supplied identifiers that flow into file
+# paths must NOT contain path-traversal sequences, slashes, NULs, or
+# shell metacharacters. This is enforced at every CLI boundary so the
+# sanitized value is the only value that ever reaches the filesystem.
+_AGENT_ID_RE = __import__("re").compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
+_KEY_ID_RE = __import__("re").compile(r"^agk_[a-zA-Z0-9][a-zA-Z0-9._-]{0,55}_[a-f0-9]{8}$")
+
+
+def validate_agent_id(agent_id: str) -> None:
+    """Reject agent IDs that could escape the state root.
+
+    Allowed: 1–64 chars, [A-Za-z0-9._-], must start with [A-Za-z0-9].
+    No slashes, no `..`, no NUL, no shell metacharacters.
+    """
+    if not isinstance(agent_id, str) or not _AGENT_ID_RE.match(agent_id):
+        raise ValueError(
+            f"invalid agent_id {agent_id!r}: must match {_AGENT_ID_RE.pattern}"
+        )
+    if ".." in agent_id or "/" in agent_id or "\\" in agent_id or "\x00" in agent_id:
+        raise ValueError(f"invalid agent_id {agent_id!r}: contains forbidden sequence")
+
+
+def validate_key_id(key_id: str) -> None:
+    """Reject key IDs that don't match the agk_<agent>_<uuid8> shape."""
+    if not isinstance(key_id, str) or not _KEY_ID_RE.match(key_id):
+        raise ValueError(
+            f"invalid key_id {key_id!r}: must match {_KEY_ID_RE.pattern}"
+        )
+
+
 def _generate_keypair() -> tuple[str, str]:
     """Generate an Ed25519 keypair via Python stdlib.
 
@@ -55,13 +85,21 @@ def cmd_keys_new(state: State, agent_id: str, description: str = "") -> str:
 
     Returns the new key id.
     """
+    # Reject any agent_id that could escape the state root before it
+    # touches the filesystem.
+    validate_agent_id(agent_id)
     priv_pem, pub_pem = _generate_keypair()
     key_id = f"agk_{agent_id}_{uuid.uuid4().hex[:8]}"
+    validate_key_id(key_id)
     fingerprint = _fingerprint_pubkey(pub_pem)
 
     # private material lives in a separate, restrictive directory
     material_dir = state.root / KEYS_MATERIAL_DIRNAME
     material_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        os_chmod_private(material_dir)  # 0700
+    except OSError:
+        pass
     priv_path = material_dir / f"{key_id}.pem"
     priv_path.write_text(priv_pem)
     try:
@@ -85,8 +123,14 @@ def cmd_keys_new(state: State, agent_id: str, description: str = "") -> str:
 
 
 def os_chmod_private(path: Path) -> None:
+    """Lock a path to Owner-only. Directories get 0700 (rwx for owner);
+    files get 0600 (rw for owner). Group and other bits are always zero
+    so only the Owner-uid and processes running as that uid (the
+    session-id-agent) can read or write.
+    """
     import os
-    os.chmod(path, 0o600)
+    mode = 0o700 if path.is_dir() else 0o600
+    os.chmod(path, mode)
 
 
 def _fingerprint_pubkey(pub_pem: str) -> str:
@@ -100,6 +144,11 @@ def cmd_keys(state: State, args: argparse.Namespace) -> int:
     if sub == "list":
         return _keys_list(state, args)
     if sub == "new":
+        try:
+            validate_agent_id(args.agent_id)
+        except ValueError as exc:
+            print(f"error: {exc}", file=__import__("sys").stderr)
+            return 2
         key_id = cmd_keys_new(state,
                               agent_id=args.agent_id,
                               description=args.description)
@@ -113,6 +162,11 @@ def cmd_keys(state: State, args: argparse.Namespace) -> int:
                 print(f"  material:    {k.get('private_key_path')}")
         return 0
     if sub == "show":
+        try:
+            validate_key_id(args.key_id)
+        except ValueError as exc:
+            print(f"error: {exc}", file=__import__("sys").stderr)
+            return 2
         meta = state.get_key(args.key_id)
         if meta is None:
             print(f"no such key: {args.key_id}", file=__import__("sys").stderr)

@@ -26,7 +26,16 @@ from .state import State, atomic_write_json
 
 
 def _cmd_install(args: argparse.Namespace) -> int:
+    import os as _os
     state = State(root=args.state_root)
+    # Lock the state root and private subdirs to Owner-only (0700).
+    # This is what makes the Owner-uuid + session-id-agent the only
+    # actors that can read/write at localspace.
+    for d in (state.root, state.root / "keys_material"):
+        try:
+            _os.chmod(d, 0o700)
+        except OSError:
+            pass
     cfg = state.load_config()
     cfg["installed_at"] = int(__import__("time").time())
     cfg["installed_by"] = "rollout-shield install"
