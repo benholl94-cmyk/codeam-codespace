@@ -1,6 +1,33 @@
 # Changelog
 
 
+
+## v0.2.0 — 2026-07-30
+
+Native Android app v0.2.0: real APK (NOT PWA) with homescreen icon, loopback-only HTTP server inside the app, no INTERNET permission, owner-unlock gated. Built with Kotlin + Gradle (AndroidX only, no third-party UI deps).
+
+## Highlights
+- **Real native Android app** — produces a real APK that, when installed (adb install / sideload), shows up on the homescreen with a real adaptive launcher icon (shield+R vector monogram, no PNG required)
+- **NOT a PWA** — no service worker, no manifest.webmanifest, no browser tab. Pure Kotlin (MainActivity + LocalServer + LocalCrypto) + AndroidX/Material
+- **Loopback-only at the OS level**:
+  * AndroidManifest declares NO <uses-permission android:name="android.permission.INTERNET" /> — app physically cannot reach the network
+  * network_security_config.xml: cleartext denied globally; 127.0.0.1 + localhost explicitly allowed only
+  * LocalServer.kt binds InetAddress.getByName('127.0.0.1') ONLY (never 0.0.0.0)
+- **Owner-unlock gated** — refuses to start the WebView until filesDir/owner_unlock is present; if absent, shows 'Unlock required' screen with local-generation button
+- **Cloud-backup disabled** — data_extraction_rules.xml blocks Google Auto Backup and device transfer across all storage domains
+- **Standalone / no external service** — zero Google Play Services, Firebase, or telemetry dependencies
+- **Build paths**:
+  * Desktop: open android-app/ in Android Studio Hedgehog+, Build APK
+  * On-device: build-on-termux.sh installs cmdline-tools + SDK 34 + gradle assembleDebug → app-debug.apk
+- **No external URLs in build** — gradle-wrapper.properties deliberately omitted (uses installed gradle); the build itself works offline once AndroidX caches are warm
+
+## Files (18 total)
+- android-app/{settings,build}.gradle.kts, gradle.properties, README.md, build-on-termux.sh
+- app/build.gradle.kts, app/src/main/AndroidManifest.xml
+- app/src/main/kotlin/com/rolloutshield/dashboard/{MainActivity,LocalServer,LocalCrypto}.kt
+- app/src/main/res/{values/{strings,colors,themes}.xml, drawable/ic_launcher_foreground.xml,
+  mipmap-anydpi-v26/ic_launcher{,_round}.xml, xml/{network_security_config,data_extraction_rules}.xml}
+
 ## v0.1.1 — 2026-07-30
 
 Deploy bundle v0.1.1: self-contained bounded safe web server. rollout-shield deploy bundle/check subcommands; Dockerfile + nginx.conf + docker-compose.yml; per-IP token-bucket rate limiter; CSP/HSTS/X-Frame-Options/X-Content-Type-Options/Referrer-Policy; bounded (10 r/s, conn cap 8, mem cap 256 MiB); permanent (named volumes); never-localebly (source repo not bundled).
