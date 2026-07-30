@@ -42,6 +42,7 @@ URLS=$(grep -rEn 'https?://[^ "'\'')]+' \
     | grep -vE 'f"http://\{args' \
     | grep -vE '# http' \
     | grep -vE '\.md:' \
+    | grep -vE 'proxy_pass http://|return 30[17] https?://|upstream dashboard_upstream' \
     || true)
 if [[ -n "$URLS" ]]; then
     echo "$URLS" | head -10

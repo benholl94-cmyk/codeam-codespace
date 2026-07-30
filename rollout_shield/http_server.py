@@ -34,12 +34,25 @@ from pathlib import Path
 
 from .state import State
 
+# Defense-in-depth: rate-limit + security headers. The deploy bundle's nginx
+# already does both, but we apply them here too so a bare ``dashboard``
+# invocation on a hostile network is still bounded.
+try:
+    from .deploy import TokenBucket, apply_security_headers, SECURITY_HEADERS
+    _HAS_DEPLOY = True
+except ImportError:  # pragma: no cover
+    _HAS_DEPLOY = False
+
 
 INTERFACE_DIR = Path(__file__).parent / "interface"
 
+# Per-process rate limiter: 10 tokens, 1 token / sec refill (burst 10).
+# The /healthz-style path bypasses the bucket; /api/* and / consume it.
+_RATE_BUCKET = TokenBucket(capacity=10, refill_per_sec=1.0) if _HAS_DEPLOY else None
+
 
 class DashboardHandler(BaseHTTPRequestHandler):
-    server_version = "rollout-shield/0.1.0"
+    server_version = "rollout-shield/0.1.1"
     state: State  # set by `make_handler`
 
     # ---------- response helpers ----------
@@ -50,7 +63,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -66,6 +79,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -74,8 +88,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        self._send_security_headers()
         self.end_headers()
         self.wfile.write(data)
+
+    def _send_security_headers(self) -> None:
+        if not _HAS_DEPLOY:
+            return
+        for k, v in SECURITY_HEADERS.items():
+            self.send_header(k, v)
 
     # ---------- routing ----------
 
@@ -83,6 +104,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         query = urllib.parse.parse_qs(parsed.query)
+
+        # Per-IP rate limit (defense in depth; nginx already enforces too)
+        if _RATE_BUCKET is not None:
+            ip = self.client_address[0] if self.client_address else "unknown"
+            if not _RATE_BUCKET.take(ip):
+                self._send_json(429, {"error": "rate_limited", "ip": ip})
+                return
 
         # API
         if path.startswith("/api/"):

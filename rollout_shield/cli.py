@@ -138,6 +138,25 @@ def _cmd_self_check(args: argparse.Namespace) -> int:
     return cmd_self_check(state, args)
 
 
+def _cmd_deploy(args: argparse.Namespace) -> int:
+    from .deploy import main as deploy_main
+    argv = []
+    if args.deploy_cmd == "bundle":
+        argv.append("bundle")
+        if args.out:
+            argv += ["--out", str(args.out)]
+        if args.src:
+            argv += ["--src", str(args.src)]
+        if args.tarball:
+            argv += ["--tarball", str(args.tarball)]
+    elif args.deploy_cmd == "check":
+        argv.append("check")
+        argv += ["--bundle", str(args.bundle)]
+    else:
+        return 1
+    return deploy_main(argv)
+
+
 def build_parser() -> argparse.ArgumentParser:
     # Common args available on every subcommand. Using `parents=` makes
     # argparse pass them through to subparsers as if they were defined
@@ -236,6 +255,24 @@ def build_parser() -> argparse.ArgumentParser:
     # self-check
     p = sub.add_parser("self-check", help="diagnose environment", parents=[common])
     p.set_defaults(func=_cmd_self_check)
+
+    # deploy (generate or check a deploy bundle)
+    p = sub.add_parser("deploy", help="generate / verify a deploy bundle",
+                       parents=[common])
+    deploy_sub = p.add_subparsers(dest="deploy_cmd", required=True)
+
+    db = deploy_sub.add_parser("bundle", help="generate the deploy bundle")
+    db.add_argument("--out", default="./dist/deploy-bundle",
+                    help="output directory (default ./dist/deploy-bundle)")
+    db.add_argument("--src", default=".",
+                    help="source repo root (default .)")
+    db.add_argument("--tarball", default=None,
+                    help="also write a .tar.gz at this path")
+    db.set_defaults(func=_cmd_deploy)
+
+    dc = deploy_sub.add_parser("check", help="verify a bundle against MANIFEST.json")
+    dc.add_argument("--bundle", required=True, help="path to bundle directory")
+    dc.set_defaults(func=_cmd_deploy)
 
     return parser
 
