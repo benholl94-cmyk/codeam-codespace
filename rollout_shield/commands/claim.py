@@ -26,7 +26,11 @@ def _sign_with_key(state: State, agent_id: str, payload_bytes: bytes) -> tuple[s
     """Sign the payload with the most recently created key for this agent.
 
     Returns ``(signature_b64, public_pem, key_id)``. Raises if no key
-    exists for the given agent.
+    exists for the given agent, if the on-disk private key file is
+    group/world-readable, or if the recorded ``public_key_pem`` does
+    not match the public key derived from the on-disk PEM (the latter
+    is the G1 fix that catches tampered metadata pointing at an
+    attacker-controlled private key).
     """
     keys = [k for k in state.list_keys() if k.get("agent_id") == agent_id]
     if not keys:
@@ -39,11 +43,23 @@ def _sign_with_key(state: State, agent_id: str, payload_bytes: bytes) -> tuple[s
     priv_path = Path(key.get("private_key_path", ""))
     if not priv_path.exists():
         raise RuntimeError(f"private key material missing: {priv_path}")
+
+    # G1: refuse to sign if private key file is group/world-readable.
+    # The chmod-on-write in keys.py should already guarantee 0600, but
+    # verify at read time in case the FS has been tampered with since.
+    mode = priv_path.stat().st_mode & 0o777
+    if mode & 0o077:
+        raise RuntimeError(
+            f"private key {priv_path} is group/world-accessible "
+            f"(mode {oct(mode)}); chmod 0600 before signing"
+        )
+
     priv_pem = priv_path.read_text()
 
     try:
-        from cryptography.hazmat.primitives.serialization import load_pem_private_key
-        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        from cryptography.hazmat.primitives.serialization import (
+            load_pem_private_key, Encoding, PublicFormat,
+        )
     except ImportError as exc:
         raise RuntimeError(
             "The `cryptography` package is required for signing. "
@@ -51,8 +67,24 @@ def _sign_with_key(state: State, agent_id: str, payload_bytes: bytes) -> tuple[s
         ) from exc
 
     priv = load_pem_private_key(priv_pem.encode("ascii"), password=None)
+    # G1: derive the public key from the on-disk PEM and compare to the
+    # recorded public_key_pem. If they differ, the keys/<id>.json
+    # metadata has been tampered with (or a partial restore pulled a
+    # key from a different install) — refuse to sign.
+    derived_pub_pem = priv.public_key().public_bytes(
+        Encoding.PEM, PublicFormat.SubjectPublicKeyInfo
+    ).decode("ascii")
+    recorded_pub_pem = (key.get("public_key_pem") or "").strip()
+    if recorded_pub_pem and recorded_pub_pem != derived_pub_pem.strip():
+        raise RuntimeError(
+            f"key metadata mismatch for {priv_path}: recorded "
+            f"public_key_pem does not match the public key derived "
+            f"from the on-disk PEM; refusing to sign (metadata may "
+            f"have been tampered with)"
+        )
+
     signature = priv.sign(payload_bytes)
-    return base64.b64encode(signature).decode("ascii"), key.get("public_key_pem"), key.get("id")
+    return base64.b64encode(signature).decode("ascii"), derived_pub_pem, key.get("id")
 
 
 def _canonicalize(obj: dict) -> bytes:
@@ -109,7 +141,12 @@ def cmd_create(state: State, agent_id: str, claim_type: str, body: str,
     state.append_claim(claim)
     # record a small reputation event for honest claim emission
     try:
-        state.update_reputation(agent_id, 0.02, f"claim:{claim_type}")
+        # G3: pass actor=agent_id so update_reputation's self-update
+        # check passes. The CLI's --agent-id flag has already been
+        # validated, and the signer is provably bound to this agent
+        # via G1's on-disk-vs-recorded PEM check.
+        state.update_reputation(agent_id, 0.02, f"claim:{claim_type}",
+                                actor=agent_id)
     except Exception:
         pass  # reputation is best-effort — never block emission
     return claim
