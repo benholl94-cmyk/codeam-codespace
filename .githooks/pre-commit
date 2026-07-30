@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Pre-commit hook: refuse to commit if leak_check.sh finds anything.
+#
+# Install with:
+#   git config core.hooksPath .githooks
+# Or symlink manually.
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+echo "[pre-commit] running leak_check …"
+if ! tools/leak_check.sh >/dev/null 2>&1; then
+    echo "" >&2
+    echo "✗ leak_check found potential leaks — commit aborted" >&2
+    echo "" >&2
+    echo "  Run 'tools/leak_check.sh' to see details, fix the issue," >&2
+    echo "  then re-attempt the commit." >&2
+    echo "" >&2
+    tools/leak_check.sh 2>&1 | tail -15 >&2
+    exit 1
+fi
+echo "[pre-commit] leak_check clean ✓"
+exit 0

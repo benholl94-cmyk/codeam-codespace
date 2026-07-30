@@ -54,7 +54,7 @@ fi
 echo
 echo "[2] network library imports in source:"
 NET=$(grep -rEn '^import (urllib|requests|httpx|aiohttp)|^(import|from) socket' \
-    rollout_shield/ tools/ bin/ 2>/dev/null \
+    rollout_shield/ tools/ bin/ tests/ 2>/dev/null \
     | grep -vE '^[^:]+:[0-9]+:\s*#' \
     || true)
 # Distinguish stdlib (urllib/socket) from third-party (requests/httpx/aiohttp).
