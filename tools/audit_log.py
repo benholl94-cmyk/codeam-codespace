@@ -38,6 +38,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 AUDIT_DIR = Path(os.environ.get("ROLLOUT_SHIELD_AUDIT", ".audit"))
@@ -202,6 +203,12 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--tail", type=int, metavar="N", help="show last N entries")
     g.add_argument("--summary", type=int, metavar="DAYS", nargs="?",
                    const=7, default=None, help="summarize last N days (default 7)")
+    g.add_argument("--heartbeat", action="store_true",
+                   help="append a heartbeat entry (rate-limited to 1/24h)")
+    g.add_argument("--rotate", action="store_true",
+                   help="archive current chain, start new genesis")
+    g.add_argument("--heartbeat-age", action="store_true",
+                   help="show seconds since last heartbeat (or 'never')")
     args = p.parse_args(argv)
 
     if args.append:
@@ -231,8 +238,81 @@ def main(argv: list[str] | None = None) -> int:
         s = summarize(args.summary)
         print(json.dumps(s, indent=2, sort_keys=True))
         return 0
+    if args.heartbeat:
+        entry = heartbeat()
+        if entry is None:
+            print("heartbeat: skipped (within 24h window)")
+            return 0
+        print(f"heartbeat appended: {entry['hash'][:16]}…")
+        return 0
+    if args.rotate:
+        info = rotate()
+        print(f"rotated: archived → {info['archived_to']}")
+        return 0
+    if args.heartbeat_age:
+        age = last_heartbeat_age_seconds()
+        if age is None:
+            print("never")
+            return 1
+        print(f"{int(age)}s ({age/3600:.1f}h)")
+        return 0
     return 1
 
+
+# ---------- heartbeat (Q8 from SELF_DIAGNOSIS) ----------
+# A daily "I'm alive" entry. privacy_audit checks that the most recent
+# entry is <25h old; if older, the audit log is silently broken.
+
+HEARTBEAT_FILE = AUDIT_DIR / "last_heartbeat"
+
+
+def heartbeat(force: bool = False) -> dict | None:
+    """Append a heartbeat entry. Once per 24h unless force=True."""
+    if HEARTBEAT_FILE.exists() and not force:
+        age = time.time() - HEARTBEAT_FILE.stat().st_mtime
+        if age < 86400:  # <24h
+            return None
+    entry = append("heartbeat", actor="system", target="audit_log",
+                   ok=True, detail={"ts_utc": _iso_now()})
+    HEARTBEAT_FILE.write_text(entry.get("hash", ""))
+    return entry
+
+
+def last_heartbeat_age_seconds() -> float | None:
+    """How long since the last heartbeat? None if never."""
+    if not HEARTBEAT_FILE.exists():
+        return None
+    return time.time() - HEARTBEAT_FILE.stat().st_mtime
+
+
+# ---------- rotation ----------
+# Avoids unbounded log growth (Q6 from SELF_DIAGNOSIS). Archives the
+# current chain to a timestamped file and starts a new genesis.
+
+def rotate() -> dict:
+    """Archive current chain. Returns {archived_to, kept_count}."""
+    if not LOG_PATH.exists():
+        return {"archived_to": None, "kept_count": 0}
+    ARCHIVE_DIR = AUDIT_DIR / "archive"
+    ARCHIVE_DIR.mkdir(exist_ok=True)
+    try:
+        os.chmod(ARCHIVE_DIR, 0o700)
+    except OSError:
+        pass
+    stamp = _now()  # 20260730T080000Z
+    archive_path = ARCHIVE_DIR / f"audit-{stamp}.jsonl"
+    # atomic rename
+    os.replace(LOG_PATH, archive_path)
+    # also archive heartbeat marker
+    if HEARTBEAT_FILE.exists():
+        os.replace(HEARTBEAT_FILE, ARCHIVE_DIR / f"heartbeat-{stamp}")
+    # reset
+    HEARTBEAT_FILE.write_text("")
+    # immediately write a fresh genesis marker
+    append("rotate", actor="system", target="audit_log",
+           ok=True, detail={"archived_to": str(archive_path)})
+    return {"archived_to": str(archive_path),
+            "kept_count": 0}
 
 if __name__ == "__main__":
     sys.exit(main())

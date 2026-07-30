@@ -47,7 +47,20 @@ else
 fi
 
 echo
-echo "[4/5] gitignore hardening …"
+echo "[4/6] audit-log heartbeat …"
+AGE=$(python3 tools/audit_log.py --heartbeat-age 2>/dev/null | head -1)
+if [[ -z "$AGE" || "$AGE" == "never" ]]; then
+    echo "  [WARN] no heartbeat recorded — audit log may be silently broken"
+    FAIL=1
+elif [[ "$AGE" == *"h"* ]] && [[ "${AGE%h*}" =~ ^[0-9.]+$ ]] && (( ${AGE%h*} > 25 )); then
+    echo "  [WARN] heartbeat age ${AGE} > 25h — audit log stale"
+    FAIL=1
+else
+    ok "heartbeat fresh (${AGE})"
+fi
+
+echo
+echo "[5/6] gitignore hardening …"
 MISSING=0
 for pat in '.audit/' '.env' '*.pem' '*.key' '.rollout-shield/' '.safeups/'; do
     if ! grep -qE "^${pat//./\\.}" .gitignore 2>/dev/null; then
@@ -58,7 +71,7 @@ done
 [[ $MISSING -eq 0 ]] && ok "all sensitive patterns gitignored" || FAIL=1
 
 echo
-echo "[5/5] doctor.py …"
+echo "[6/6] doctor.py …"
 if python3 tools/doctor.py >/dev/null 2>&1; then
     ok "doctor reports 0 failures"
 else

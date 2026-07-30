@@ -138,6 +138,7 @@ done
 echo
 echo "[7] git-tracked sensitive files:"
 SENS=$(git ls-files | grep -E '\.(env|env\.[a-z]+|pem|key|p12)$|^private/|^secrets/' \
+    | grep -vE '\.env\.example$' \
     | head -10 || true)
 if [[ -n "$SENS" ]]; then
     echo "$SENS"
