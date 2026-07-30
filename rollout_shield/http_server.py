@@ -152,7 +152,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--state-root", type=Path, default=None)
     parser.add_argument("--open", action="store_true",
                         help="also open the dashboard URL in the default browser")
+    parser.add_argument("--i-know-bind-is-public", dest="public_confirm",
+                        action="store_true",
+                        help="REQUIRED when --host is 0.0.0.0 / public (acknowledgment)")
     args = parser.parse_args(argv)
+
+    # Pop-off #5: refuse public bind without explicit confirmation
+    if args.host in ("0.0.0.0", "::", "") and not args.public_confirm:
+        print(
+            f"REFUSED: binding to {args.host!r} exposes the dashboard on all\n"
+            f"network interfaces. Pass --i-know-bind-is-public to confirm\n"
+            f"you understand this leaks state (claims, reputation, alerts)\n"
+            f"to anyone reachable on the network.",
+            file=sys.stderr,
+        )
+        return 2
 
     state = State(root=args.state_root)
     handler_cls = make_handler(state)
