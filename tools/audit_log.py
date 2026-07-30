@@ -264,18 +264,96 @@ def main(argv: list[str] | None = None) -> int:
 # entry is <25h old; if older, the audit log is silently broken.
 
 HEARTBEAT_FILE = AUDIT_DIR / "last_heartbeat"
+HB_LOCK_FILE = AUDIT_DIR / ".hb.lock"
+
+# A lock file older than this is treated as a crashed predecessor's
+# residue and unlinked so the next caller can proceed. 5s is far longer
+# than a heartbeat() call needs (sub-second in normal operation).
+_HB_LOCK_STALE_SECONDS = 5
+
+
+def _hb_acquire() -> int | None:
+    """Acquire exclusive cross-process lock for the heartbeat window.
+
+    Uses O_CREAT|O_EXCL on a sentinel file inside the audit dir. If the
+    sentinel is already present, we treat it as "another process holds
+    the heartbeat window" and prune it only if it appears stale (older
+    than _HB_LOCK_STALE_SECONDS — usually because a predecessor crashed
+    before releasing).
+    """
+    # Mirror append(): ensure audit dir exists and is owner-only. This
+    # also ensures O_CREAT on the lockfile has a parent directory.
+    AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(AUDIT_DIR, 0o700)
+    except OSError:
+        pass
+    try:
+        return os.open(str(HB_LOCK_FILE),
+                       os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+    except FileExistsError:
+        # Lockfile present. Is it stale?
+        try:
+            age = time.time() - HB_LOCK_FILE.stat().st_mtime
+            if age > _HB_LOCK_STALE_SECONDS:
+                try:
+                    HB_LOCK_FILE.unlink()
+                except FileNotFoundError:
+                    pass
+                # Retry exactly once. If we still lose, give up.
+                try:
+                    return os.open(str(HB_LOCK_FILE),
+                                   os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+                except FileExistsError:
+                    return None
+        except FileNotFoundError:
+            # Lockfile disappeared between exists() and stat(). Try once.
+            try:
+                return os.open(str(HB_LOCK_FILE),
+                               os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+            except FileExistsError:
+                return None
+        return None
+
+
+def _hb_release(fd: int) -> None:
+    """Release the heartbeat lock: close + unlink the sentinel."""
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+    try:
+        HB_LOCK_FILE.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
 
 
 def heartbeat(force: bool = False) -> dict | None:
-    """Append a heartbeat entry. Once per 24h unless force=True."""
-    if HEARTBEAT_FILE.exists() and not force:
-        age = time.time() - HEARTBEAT_FILE.stat().st_mtime
-        if age < 86400:  # <24h
-            return None
-    entry = append("heartbeat", actor="system", target="audit_log",
-                   ok=True, detail={"ts_utc": _iso_now()})
-    HEARTBEAT_FILE.write_text(entry.get("hash", ""))
-    return entry
+    """Append a heartbeat entry. Once per 24h unless force=True.
+
+    Cross-process safety (G1 fix): the check-then-write window is
+    serialized by an O_EXCL sentinel lock. Two processes calling
+    ``heartbeat()`` simultaneously will see exactly one entry appended
+    and the loser will receive ``None``. Sequential calls are
+    unaffected: each acquires and releases the lock in turn.
+    """
+    fd = _hb_acquire()
+    if fd is None:
+        # Another process holds the heartbeat window. Idempotent return.
+        return None
+    try:
+        if HEARTBEAT_FILE.exists() and not force:
+            age = time.time() - HEARTBEAT_FILE.stat().st_mtime
+            if age < 86400:  # <24h
+                return None
+        entry = append("heartbeat", actor="system", target="audit_log",
+                       ok=True, detail={"ts_utc": _iso_now()})
+        HEARTBEAT_FILE.write_text(entry.get("hash", ""))
+        return entry
+    finally:
+        _hb_release(fd)
 
 
 def last_heartbeat_age_seconds() -> float | None:
