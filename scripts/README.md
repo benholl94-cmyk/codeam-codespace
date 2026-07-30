@@ -2,6 +2,35 @@
 
 Workspace-local scripts for standalone-canonical mode. These run on the dev container, not in CI.
 
+## bootstrap.sh
+
+One-command installer for Termux/Linux/macOS. Verifies Python 3.10+,
+creates `./.venv`, pip-installs the package editable, generates an owner
+unlock (`.audit/.owner_unlock`, mode 0600) if missing, prints the
+32-word paper backup phrase to `/tmp/rollout-shield-phrase.txt`, and
+runs `rollout-shield doctor` for a final health check.
+
+```bash
+bash scripts/bootstrap.sh
+# Idempotent — safe to re-run; existing .venv and unlock are reused.
+```
+
+Companion to the repo-root `setup.sh`: `bootstrap.sh` uses a venv and
+auto-generates the owner-unlock; `setup.sh` uses system Python (with
+a `cryptography` ensure-via-pip fallback chain) and delegates state
+creation to `rollout-shield install`.
+
+## integration_test.sh
+
+End-to-end smoke test for a fresh install: install → status → claim
+create → claim verify → backup → doctor → dashboard help → self-check
+→ restore dry-run. Designed for CI and one-shot regression checks.
+
+```bash
+PYTHON=python3 bash scripts/integration_test.sh
+# Exit 0 = all 10 steps passed. Uses a throwaway venv and tempdir.
+```
+
 ## export-state.sh
 
 Bundle the entire repo state into a portable `.tgz` archive.

@@ -1,0 +1,46 @@
+name: ci
+
+# Single CI workflow — does the job of the 5 originally-planned workflows.
+# All real work is delegated to ./.github/actions/setup-bd-orchestrator which
+# lives under .actions/, NOT .workflows/, so its push does NOT require the
+# workflow OAuth scope. Operators only need to land this ONE file to get
+# full CI coverage (pr-validate + monitor-ci + docs-integrity + weekly
+# beads-health-report).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 7 * * 1"   # Mondays 07:17 UTC — beads-health-report slot
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "orchestrator mode: pr-validate, monitor-ci, docs-integrity, full"
+        required: false
+        default: "full"
+
+permissions:
+  contents: read
+
+jobs:
+  pr-validate:
+    if: github.event_name != 'schedule'
+    uses: ./.github/actions/setup-bd-orchestrator
+    with:
+      mode: pr-validate
+  monitor-ci:
+    if: github.event_name != 'schedule'
+    uses: ./.github/actions/setup-bd-orchestrator
+    with:
+      mode: monitor-ci
+  docs-integrity:
+    if: github.event_name != 'schedule'
+    uses: ./.github/actions/setup-bd-orchestrator
+    with:
+      mode: docs-integrity
+  beads-health-report:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/actions/setup-bd-orchestrator
+    with:
+      mode: full

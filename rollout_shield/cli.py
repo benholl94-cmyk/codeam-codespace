@@ -157,11 +157,135 @@ def _cmd_deploy(args: argparse.Namespace) -> int:
     return deploy_main(argv)
 
 
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    """Run tools/doctor.py — 10 health checks across python/crypto/state/
+    keys/logs/safeups/git/beads. Returns 0 if all OK, 1 on warnings, 2 on
+    failures. JSON output available via --json."""
+    import subprocess
+    import sys as _sys
+    doctor_py = Path(__file__).resolve().parent.parent / "tools" / "doctor.py"
+    if not doctor_py.exists():
+        print(f"doctor.py not found at {doctor_py}", file=_sys.stderr)
+        return 1
+    argv = [_sys.executable, str(doctor_py)]
+    if args.json:
+        argv.append("--json")
+    # Forward --state-root so doctor inspects the same state dir the
+    # caller targeted (otherwise doctor falls back to ./.rollout-shield
+    # in cwd, which is rarely what the user wants when --state-root
+    # was specified at the rollout-shield level).
+    if getattr(args, "state_root", None):
+        argv += ["--state-root", str(args.state_root)]
+    if getattr(args, "doctor_root", None):
+        argv += ["--root", str(args.doctor_root)]
+    r = subprocess.run(argv)
+    return r.returncode
+
+
+def _cmd_backup(args: argparse.Namespace) -> int:
+    """Backup workflow: snapshot state dir (safeup) + print paper phrase
+    (secure_state --backup). Safe to run repeatedly; both operations
+    are idempotent (snapshot rotates, phrase re-derives deterministically
+    from the same key)."""
+    import subprocess
+    import sys as _sys
+    repo = Path(__file__).resolve().parent.parent
+    safeup = repo / "tools" / "safeup.py"
+    secure = repo / "tools" / "secure_state.py"
+
+    # 1. snapshot the state dir
+    op = f"backup-{int(__import__('time').time())}"
+    # If the caller pinned --state-root to a non-default location,
+    # derive a safeup root next to it so the snapshot captures that
+    # exact tree (otherwise safeup defaults to cwd/.safeups).
+    sr = getattr(args, "state_root", None)
+    snapshot_argv = [_sys.executable, str(safeup)]
+    if sr:
+        sr_path = Path(sr).resolve()
+        sr_path.mkdir(parents=True, exist_ok=True)
+        safeup_root = sr_path.parent / f".safeups-{sr_path.name}"
+        snapshot_argv += ["--root", str(safeup_root)]
+    snapshot_argv += ["snapshot", "--op", op, "--keep", str(args.keep)]
+    r = subprocess.run(snapshot_argv)
+    if r.returncode != 0:
+        print("snapshot failed; refusing to print phrase", file=_sys.stderr)
+        return r.returncode
+
+    # 2. print paper phrase (or recover info if --print-key)
+    if args.print_key:
+        r2 = subprocess.run([_sys.executable, str(secure), "--status"])
+    else:
+        r2 = subprocess.run([_sys.executable, str(secure), "--backup"])
+    return r2.returncode
+
+
+def _cmd_restore(args: argparse.Namespace) -> int:
+    """Restore state from a safeup snapshot."""
+    import subprocess
+    import sys as _sys
+    safeup = Path(__file__).resolve().parent.parent / "tools" / "safeup.py"
+    argv = [_sys.executable, str(safeup)]
+    sr = getattr(args, "state_root", None)
+    if sr:
+        sr_path = Path(sr).resolve()
+        sr_path.mkdir(parents=True, exist_ok=True)
+        safeup_root = sr_path.parent / f".safeups-{sr_path.name}"
+        argv += ["--root", str(safeup_root)]
+    argv += ["restore", args.snapshot_id]
+    if args.dry_run:
+        argv.append("--dry-run")
+    argv += ["--keep", str(args.keep)]
+    r = subprocess.run(argv)
+    return r.returncode
+
+
+def _cmd_uninstall(args: argparse.Namespace) -> int:
+    """Remove state directories, audit log, and unlock file. Confirms
+    unless --yes is passed. Refuses to remove the source repo."""
+    import shutil
+    import sys as _sys
+    repo = Path(__file__).resolve().parent.parent
+    targets = [
+        repo / ".rollout-shield",  # state dir
+        repo / ".audit",            # audit log + unlock
+        repo / ".safeups",          # snapshots
+    ]
+    found = [t for t in targets if t.exists()]
+    if not found:
+        print("nothing to uninstall (no state dirs present)")
+        return 0
+    print("Will remove:")
+    for t in found:
+        try:
+            size = sum(f.stat().st_size for f in t.rglob("*") if f.is_file())
+            print(f"  {t}  ({size} bytes across {sum(1 for _ in t.rglob('*'))} entries)")
+        except OSError as e:
+            print(f"  {t}  (cannot stat: {e})")
+    if not args.yes:
+        try:
+            ans = input("Proceed? [yes/NO]: ").strip().lower()
+        except EOFError:
+            ans = ""
+        if ans != "yes":
+            print("aborted")
+            return 1
+    for t in found:
+        try:
+            shutil.rmtree(t)
+            print(f"removed {t}")
+        except OSError as e:
+            print(f"failed to remove {t}: {e}", file=_sys.stderr)
+    print("uninstall complete. source repo preserved.")
+    print("to remove the package: pip uninstall rollout-shield")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
-    # Common args available on every subcommand. Using `parents=` makes
-    # argparse pass them through to subparsers as if they were defined
-    # there. This lets `rollout-shield <subcmd> --state-root DIR` work
-    # without duplicating the argument on each subparser.
+    # Common args available on every subcommand. Defining them on the
+    # parent parser lets them appear before the subcommand; the
+    # subparser inheritance (`parents=[common]`) lets them also appear
+    # after. `_extract_common_args` in `main()` ensures the value lands
+    # on the top-level namespace regardless of position.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--state-root", type=Path, default=None,
                         help="override state root directory (default: ./.rollout-shield)")
@@ -274,7 +398,82 @@ def build_parser() -> argparse.ArgumentParser:
     dc.add_argument("--bundle", required=True, help="path to bundle directory")
     dc.set_defaults(func=_cmd_deploy)
 
+    # doctor — 10 health checks across python/crypto/state/keys/logs/safeups/git/beads
+    p = sub.add_parser("doctor", help="run 10 health checks (python, crypto, state, "
+                                       "keys, logs, safeups, git, beads)", parents=[common])
+    p.add_argument("--root", dest="doctor_root", default=None,
+                   help="root directory for the doctor to scan (default: repo root)")
+    p.set_defaults(func=_cmd_doctor)
+
+    # backup — safeup snapshot + paper phrase
+    p = sub.add_parser("backup", help="snapshot state dir + print 32-word paper phrase",
+                       parents=[common])
+    p.add_argument("--keep", type=int, default=10,
+                   help="how many snapshots to retain (default 10)")
+    p.add_argument("--print-key", action="store_true",
+                   help="print key status (path/mode) instead of paper phrase")
+    p.set_defaults(func=_cmd_backup)
+
+    # restore — restore from a safeup snapshot id
+    p = sub.add_parser("restore", help="restore state from a safeup snapshot",
+                       parents=[common])
+    p.add_argument("snapshot_id", help="snapshot id (run 'safeup list' to see)")
+    p.add_argument("--dry-run", action="store_true",
+                   help="show what would be restored without writing")
+    p.add_argument("--keep", type=int, default=10,
+                   help="snapshots to retain during restore (default 10)")
+    p.set_defaults(func=_cmd_restore)
+
+    # uninstall — remove state dirs, audit log, unlock; keep source repo
+    p = sub.add_parser("uninstall", help="remove state dirs + unlock + snapshots "
+                                         "(source repo preserved)", parents=[common])
+    p.add_argument("--yes", action="store_true",
+                   help="skip confirmation prompt")
+    p.set_defaults(func=_cmd_uninstall)
+
     return parser
+
+
+def _extract_common_args(argv: list[str]) -> tuple[list[str], Path | None, bool]:
+    """Pre-scan argv for --state-root VALUE and --json, regardless of where
+    they appear (before or after the subcommand). Strip them from argv and
+    return the cleaned argv plus the extracted values.
+
+    This works around a long-standing argparse quirk: when the same flag
+    is defined on both a parent and child parser via ``parents=``, the
+    child parser consumes the token and the value never lands on the
+    top-level namespace. By extracting up-front we ensure `args.state_root`
+    is set regardless of token position.
+    """
+    cleaned: list[str] = []
+    state_root: Path | None = None
+    json_flag = False
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--state-root":
+            # take the next token as the value (skip if it's another flag
+            # or the end of argv)
+            if i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+                state_root = Path(argv[i + 1])
+                i += 2
+                continue
+            else:
+                # --state-root at end with no value; let argparse error
+                cleaned.append(a)
+                i += 1
+                continue
+        if a.startswith("--state-root="):
+            state_root = Path(a.split("=", 1)[1])
+            i += 1
+            continue
+        if a == "--json":
+            json_flag = True
+            i += 1
+            continue
+        cleaned.append(a)
+        i += 1
+    return cleaned, state_root, json_flag
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -288,7 +487,14 @@ def main(argv: list[str] | None = None) -> int:
         from . import __version__
         print(f"rollout-shield {__version__}")
         return 0
-    args = parser.parse_args(argv)
+    cleaned, pre_state_root, pre_json = _extract_common_args(argv)
+    args = parser.parse_args(cleaned)
+    # Merge pre-extracted values (these take priority because the user
+    # wrote them explicitly on the command line).
+    if pre_state_root is not None:
+        args.state_root = pre_state_root
+    if pre_json:
+        args.json = True
     if not hasattr(args, "func"):
         parser.print_help()
         return 0
