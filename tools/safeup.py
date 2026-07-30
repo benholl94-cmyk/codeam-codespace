@@ -60,6 +60,19 @@ import tempfile
 from pathlib import Path
 
 DEFAULT_ROOT = Path(".safeups")
+
+# audit log integration (best-effort, never raises)
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import audit_log as _audit_log
+    def _audit(action, target="", ok=True, detail=None):
+        try:
+            _audit_log.append(action, actor="claude", target=target, ok=ok, detail=detail or {})
+        except Exception:
+            pass  # audit is best-effort
+except Exception:
+    def _audit(action, target="", ok=True, detail=None):
+        pass  # audit unavailable; silent no-op
 KEEP = int(os.environ.get("SAFEUP_KEEP", "10"))
 
 EXCLUDE_FROM_TREE = {
@@ -240,6 +253,8 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
 
     # 7. Rotate
     cmd_prune(argparse.Namespace(root=str(root), keep=args.keep))
+    _audit("safeup-snapshot", target=snap_id, ok=True,
+           detail={"files": files, "head": head_sha})
     return 0
 
 
@@ -322,6 +337,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
                 print(f"  [CORRUPT] {s.id}/{p.name}: sha256 mismatch")
                 bad += 1
     print(f"verified {total - bad}/{total} snapshots, {bad} corrupt")
+    _audit("safeup-verify", target=str(total), ok=(bad == 0),
+           detail={"total": total, "bad": bad})
     return 0 if bad == 0 else 2
 
 
@@ -362,6 +379,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
     # Mark restore-last marker
     (root / "restore-last").write_text(args.id)
     print(f"restored {args.id}")
+    _audit("safeup-restore", target=args.id, ok=True)
     return 0
 
 
@@ -390,6 +408,8 @@ def cmd_prune(args: argparse.Namespace) -> int:
                 fh.write(s.to_json() + "\n")
     else:
         print(f"no pruning needed ({len(snaps)} snapshots, keep={keep})")
+    _audit("safeup-prune", target=str(keep), ok=True,
+           detail={"kept": len(kept), "removed": len(removed)})
     return 0
 
 

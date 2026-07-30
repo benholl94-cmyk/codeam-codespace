@@ -31,6 +31,18 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import audit_log as _audit_log
+    def _audit(action, target="", ok=True, detail=None):
+        try:
+            _audit_log.append(action, actor="claude", target=target, ok=ok, detail=detail or {})
+        except Exception:
+            pass
+except Exception:
+    def _audit(action, target="", ok=True, detail=None):
+        pass
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -196,6 +208,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f" ok={counts['ok']}  warn={counts['warn']}  fail={counts['fail']}")
         print(bar)
 
+    _audit("doctor-check", target=str(state_root),
+           ok=(counts["fail"] == 0),
+           detail={"ok": counts["ok"], "warn": counts["warn"], "fail": counts["fail"]})
     return 0 if counts["fail"] == 0 else 1
 
 

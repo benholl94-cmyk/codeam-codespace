@@ -18,3 +18,15 @@ __pycache__/
 
 .safeups/
 
+# zero-leak security infra: never commit
+.audit/
+.audit/audit.jsonl
+.audit/.owner_unlock
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+private/
+secrets/
