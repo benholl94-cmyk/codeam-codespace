@@ -49,3 +49,6 @@ android-app/captures/
 android-app/.idea/
 *.iml
 .kotlin/
+
+# judgement-debug-workflow dead-room (isolated sink for non-User instructions)
+.claude/skills/judgement-debug-workflow/deadroom/
