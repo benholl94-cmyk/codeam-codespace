@@ -43,6 +43,54 @@ SCHEMA_VERSION = 1
 DEFAULT_STATE_ROOT = Path(os.environ.get("ROLLOUT_SHIELD_STATE", ".rollout-shield"))
 
 
+# Forbidden parents for any state root. Operating inside these would
+# mean the rollout-shield state tree competes with system-managed
+# directories (packages, daemons, log rotation, etc.) and is almost
+# certainly a misconfiguration or an attack. Refuse early.
+FORBIDDEN_STATE_PARENTS: tuple[Path, ...] = (
+    Path("/etc"), Path("/var"), Path("/usr"),
+    Path("/bin"), Path("/sbin"), Path("/boot"),
+    Path("/proc"), Path("/sys"), Path("/dev"),
+    Path("/lib"), Path("/lib64"), Path("/opt"),
+)
+
+
+def _validate_state_root(root: Path) -> None:
+    """Reject privileged or foreign-owned state roots (G5).
+
+    Raises ``ValueError`` if the resolved path lives inside a system
+    directory, if the running uid is 0 without explicit opt-in, or if
+    the directory already exists but is owned by another uid.
+    Operators can override the root-uid check via
+    ``ROLLOUT_SHIELD_ALLOW_ROOT_STATE=1`` and the other-owner check
+    via ``ROLLOUT_SHIELD_ALLOW_OTHER_OWNER=1``.
+    """
+    resolved = root.resolve()
+    for fp in FORBIDDEN_STATE_PARENTS:
+        if resolved.is_relative_to(fp):
+            raise ValueError(
+                f"refusing state root {resolved}: lives inside "
+                f"system directory {fp}; choose a path under "
+                f"$HOME, /srv, /workspace, or another user-owned location"
+            )
+    if os.geteuid() == 0 and not os.environ.get("ROLLOUT_SHIELD_ALLOW_ROOT_STATE"):
+        raise ValueError(
+            "refusing to operate on a state root as uid=0; "
+            "set ROLLOUT_SHIELD_ALLOW_ROOT_STATE=1 to override"
+        )
+    if resolved.exists() and not os.environ.get("ROLLOUT_SHIELD_ALLOW_OTHER_OWNER"):
+        try:
+            st = resolved.stat()
+        except OSError:
+            return
+        if st.st_uid != os.geteuid():
+            raise ValueError(
+                f"refusing state root {resolved}: owned by uid "
+                f"{st.st_uid}, but we are uid {os.geteuid()}; "
+                f"set ROLLOUT_SHIELD_ALLOW_OTHER_OWNER=1 to override"
+            )
+
+
 # Migration registry: MIGRATIONS[(from_version, to_version)] -> callable(dict) -> dict.
 # Each migration is a pure function that maps an old-version state dict to a
 # new-version state dict, preserving data semantics and never destructive.
@@ -222,6 +270,7 @@ class State:
 
     def __init__(self, root: Path | str | None = None):
         self.root = Path(root) if root else DEFAULT_STATE_ROOT
+        _validate_state_root(self.root)        # G5: refuse privileged paths
         self.root.mkdir(parents=True, exist_ok=True)
         self.config_path = self.root / "config.json"
         self.reputation_path = self.root / "reputation.json"
@@ -245,6 +294,8 @@ class State:
                 "claim_retention_days": 2555,
                 "health_window_seconds": 300,
                 "reputation_decay_days": 30,
+                "installed_at": int(time.time()),
+                "installed_by": "rollout-shield install",
             }
             atomic_write_json(self.config_path, default)
 
@@ -279,15 +330,41 @@ class State:
         rep.pop("__migration_warnings__", None)
         atomic_write_json(self.reputation_path, rep)
 
-    def update_reputation(self, agent_id: str, delta: float, reason: str) -> None:
+    def update_reputation(self, agent_id: str, delta: float, reason: str,
+                          *, actor: str | None = None) -> None:
+        # G3: require an authenticated principal, a sane delta, and
+        # self-attribution (actor == agent_id) until delegation tokens
+        # are implemented. The CLI passes actor=agent_id for claim
+        # emissions and actor="cli:verify" (or the calling uid) for
+        # verifications.
+        from .commands.keys import validate_agent_id
+        validate_agent_id(agent_id)
+        if actor is None:
+            raise RuntimeError(
+                "update_reputation requires an authenticated actor; "
+                "callers must pass actor=... explicitly"
+            )
+        if abs(delta) > 1.0:
+            raise RuntimeError(
+                f"reputation delta {delta} exceeds +/-1.0 cap"
+            )
+        if actor != agent_id and not actor.startswith("cli:"):
+            raise RuntimeError(
+                f"actor {actor!r} is not authorized to update "
+                f"reputation for {agent_id!r}; only self-update is "
+                f"permitted (delegation tokens not yet implemented)"
+            )
         rep = self.load_reputation()
         agents = rep.setdefault("agents", {})
         entry = agents.setdefault(agent_id, {"score": 0.0, "history": []})
-        entry["score"] = round(entry.get("score", 0.0) + delta, 4)
+        # cap the absolute score at +/-100.0
+        new_score = round(entry.get("score", 0.0) + delta, 4)
+        entry["score"] = max(-100.0, min(100.0, new_score))
         entry.setdefault("history", []).append({
             "ts": int(time.time()),
             "delta": delta,
             "reason": reason,
+            "actor": actor,
         })
         # keep history bounded to last 1000 events
         entry["history"] = entry["history"][-1000:]
