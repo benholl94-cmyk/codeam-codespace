@@ -45,8 +45,8 @@ class TestStateRoundTrip(unittest.TestCase):
     def test_save_load_reputation_round_trip(self):
         with tempfile.TemporaryDirectory() as d:
             state = State(root=Path(d))
-            state.update_reputation("alice", 0.1, "first-sign")
-            state.update_reputation("alice", -0.05, "soft-dispute")
+            state.update_reputation("alice", 0.1, "first-sign", actor="alice")
+            state.update_reputation("alice", -0.05, "soft-dispute", actor="alice")
             rep = state.load_reputation()
             self.assertIn("alice", rep["agents"])
             entry = rep["agents"]["alice"]
