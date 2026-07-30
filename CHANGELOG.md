@@ -1,5 +1,25 @@
 # Changelog
 
+
+## v0.1.1 — 2026-07-30
+
+Deploy bundle v0.1.1: self-contained bounded safe web server. rollout-shield deploy bundle/check subcommands; Dockerfile + nginx.conf + docker-compose.yml; per-IP token-bucket rate limiter; CSP/HSTS/X-Frame-Options/X-Content-Type-Options/Referrer-Policy; bounded (10 r/s, conn cap 8, mem cap 256 MiB); permanent (named volumes); never-localebly (source repo not bundled).
+
+## Highlights
+- **rollout-shield deploy bundle** — generates a self-contained Dockerfile + docker-compose.yml + nginx.conf + scripts bundle for shipping to a remote host
+- **Bounded** — nginx 10r/s burst 20 per-IP, conn cap 8; Python token-bucket middleware (defense in depth); container pids_limit 64, cpus 0.50, mem 256 MiB
+- **Permanent** — named volumes state + audit; survive restart/migration
+- **Safe** — CSP / HSTS / X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy; dashboard binds 127.0.0.1:8765 inside container; nginx is the only public surface; owner unlock required; no-new-privileges; cap-drop ALL; read-only fs; no-cache on /api/*
+- **Self-generated** — dashboard = Python stdlib http.server; nginx is the only non-stdlib dep
+- **Never-localebly** — source repo NEVER bundled; only the runtime minimum ships
+- **rollout-shield deploy check** — verifies bundle integrity against MANIFEST.json
+- **12 new tests** — Total 42/42 pass
+- **docs/deploy.md** — operator handbook
+
+## Bug fixes
+- **tools/leak_check.sh** — ignore nginx proxy_pass http:// and return 30x https:// directives
+- **release.py** — fixed --root placement in v0.1.0
+
 All notable changes to rollout-shield are documented in this file.
 Format follows https://keepachangelog.com (kept simple).
 
