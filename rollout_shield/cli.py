@@ -11,6 +11,9 @@ Top-level subcommands:
 - ``dashboard``      — serve the web dashboard
 - ``reputation``     — show reputation leaderboard
 - ``self-check``     — diagnose environment (Python version, state root, keys, etc.)
+- ``audit``          — scan state root for drift (registry / bytes / JSON / perms)
+- ``identity``       — unified pseudonym-identity for user + model + session
+                       (init / show / verify / conflict / restrictions / set-seed)
 
 Run ``rollout-shield --help`` for details.
 """
@@ -321,6 +324,171 @@ def _cmd_restore(args: argparse.Namespace) -> int:
     return r.returncode
 
 
+def _cmd_identity(args: argparse.Namespace) -> int:
+    """Dispatch the ``identity`` subcommand.
+
+    Sub-commands:
+      * ``init``           — create the first pseudonym + chain entry
+      * ``show``           — print current pseudonym + chain tip
+      * ``verify``         — walk chain, verify hash links
+      * ``conflict``       — append a user↔AI conflict record
+      * ``restrictions``   — list the hard world-restrictions
+      * ``set-seed SEED``  — operator-supplied user_seed (chmod 0600)
+    """
+    from .identity import (
+        IdentityChain, Pseudonym, record_conflict,
+        make_default_user_seed, set_user_seed, RESTRICTIONS,
+    )
+    from .state import State
+
+    state = State(root=args.state_root)
+    # We allow identity operations even on an un-installed state root:
+    # the identity chain is bootstrapped by the user, not by install.
+
+    sub = getattr(args, "identity_command", None) or "show"
+
+    # ---- init ----
+    if sub == "init":
+        # Use operator-supplied seed if given, else the on-disk file,
+        # else freshly generated (random) — never using any PII.
+        user_seed = args.user_seed or make_default_user_seed(state.root)
+        pseudonym = Pseudonym.derive(
+            user_seed=user_seed,
+            model_id=args.model_id,
+            session_id="install",
+            prev_chain_hash="0" * 64,
+        )
+        chain = IdentityChain(state.root)
+        pseudonym, tip = chain.append(pseudonym, note=args.note)
+        if args.json:
+            print(json.dumps({
+                "pseudonym": pseudonym.to_dict(),
+                "chain_tip": tip,
+            }, indent=2, sort_keys=True))
+        else:
+            print(f"pseudonym:  {pseudonym.token}")
+            print(f"chain_id:   {pseudonym.chain_id}")
+            print(f"chain_hash: {pseudonym.chain_hash[:24]}...")
+            print(f"  derived from: user_seed, model={args.model_id}, session=install")
+            print(f"  recorded at:  {state.root / 'identity' / 'chain.jsonl'}")
+        return 0
+
+    # ---- show ----
+    if sub == "show":
+        chain = IdentityChain(state.root)
+        latest = chain.latest()
+        if latest is None:
+            print("identity chain is empty. run: rollout-shield identity init")
+            return 1
+        if args.json:
+            print(json.dumps({
+                "latest": latest,
+            }, indent=2, sort_keys=True, default=str))
+        else:
+            print(f"pseudonym:   {latest.get('pseudonym', '?')}")
+            print(f"chain_id:    {latest.get('chain_id', '?')}")
+            print(f"chain_hash:  {latest.get('chain_hash', '?')[:24]}...")
+            print(f"model_id:    {latest.get('model_id', '?')}")
+            print(f"session_id:  {latest.get('session_id', '?')}")
+            print(f"user_seed:   {latest.get('user_seed', '?')[:16]}...")
+            print(f"prev_hash:   {latest.get('prev_chain_hash', '?')[:24]}...")
+            print(f"note:        {latest.get('note', '')}")
+            ts = latest.get("ts") or latest.get("recorded_at")
+            print(f"ts:          {ts}")
+        return 0
+
+    # ---- verify ----
+    if sub == "verify":
+        chain = IdentityChain(state.root)
+        ok, errors = chain.verify()
+        if args.json:
+            print(json.dumps({"ok": ok, "errors": errors}, indent=2))
+        else:
+            if ok:
+                print("identity chain: OK (all hash links verify)")
+                latest = chain.latest()
+                if latest:
+                    try:
+                        n_entries = sum(
+                            1 for _ in open(chain.file) if _.strip()
+                        )
+                    except OSError:
+                        n_entries = "?"
+                    print(f"  entries: {n_entries}")
+                    print(f"  tip:     {latest.get('chain_hash', '?')[:24]}...")
+            else:
+                print(f"identity chain: BROKEN ({len(errors)} error(s))")
+                for e in errors:
+                    print(f"  - {e}")
+        return 0 if ok else 2
+
+    # ---- conflict ----
+    if sub == "conflict":
+        # The "actor" for a conflict is whichever side reported it.
+        actor = getattr(args, "actor", "user")
+        chain = IdentityChain(state.root)
+        latest = chain.latest()
+        active_pseudonym = (latest or {}).get("pseudonym", "psn_unbound")
+        rec = record_conflict(
+            state.root,
+            pseudonym=active_pseudonym,
+            user_says=args.user_says,
+            ai_understood=args.ai_understood,
+            resolution=args.resolution,
+        )
+        if args.json:
+            print(json.dumps(rec.to_dict(), indent=2, sort_keys=True))
+        else:
+            print(f"conflict recorded: {rec.conflict_id}")
+            print(f"  pseudonym:        {rec.pseudonym}")
+            print(f"  prev_hash:        {rec.prev_chain_hash[:24]}...")
+            print(f"  chain_hash:       {rec.chain_hash[:24]}...")
+            print(f"  user_says:        {args.user_says}")
+            print(f"  ai_understood:    {args.ai_understood}")
+            print(f"  resolution:       {args.resolution}")
+            print(f"  actor:            {actor}")
+        return 0
+
+    # ---- restrictions ----
+    if sub == "restrictions":
+        if args.json:
+            print(json.dumps({
+                "restrictions": [
+                    {"name": n, "description": d}
+                    for n, d in RESTRICTIONS
+                ],
+            }, indent=2))
+        else:
+            print("hard world-restrictions rollout-shield respects:")
+            for i, (name, desc) in enumerate(RESTRICTIONS, 1):
+                print(f"  {i}. {name}")
+                print(f"     {desc}")
+        return 0
+
+    # ---- set-seed ----
+    if sub == "set-seed":
+        path = set_user_seed(state.root, args.seed)
+        try:
+            mode = path.stat().st_mode & 0o777
+        except OSError:
+            mode = 0
+        if args.json:
+            print(json.dumps({
+                "seed_file": str(path),
+                "mode": oct(mode),
+                "ok": mode == 0o600,
+            }, indent=2))
+        else:
+            print(f"seed written: {path}")
+            print(f"  mode: {oct(mode)} "
+                  f"({'OK' if mode == 0o600 else 'WARNING: not 0600'})")
+            print("future pseudonym derivations will use this seed.")
+        return 0 if mode == 0o600 else 1
+
+    print(f"unknown identity subcommand: {sub!r}", file=sys.stderr)
+    return 2
+
+
 def _cmd_uninstall(args: argparse.Namespace) -> int:
     """Remove state directories, audit log, and unlock file. Confirms
     unless --yes is passed. Refuses to remove the source repo."""
@@ -469,6 +637,49 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--repair", action="store_true",
                    help="delete unknown config keys; refuse content-level fixes")
     p.set_defaults(func=_cmd_audit)
+
+    # identity — pseudonym + chain + conflicts + restrictions
+    p = sub.add_parser("identity",
+                       help="unified pseudonym-identity for user + model + session",
+                       parents=[common])
+    sub_id = p.add_subparsers(dest="identity_command", required=False)
+    pi = sub_id.add_parser("init",
+                           help="create the initial pseudonym and chain entry",
+                           parents=[common])
+    pi.add_argument("--user-seed", default=None,
+                    help="operator-supplied seed (chmod 0600); random if omitted")
+    pi.add_argument("--model-id", default="MiniMax-M3",
+                    help="model identifier (default: MiniMax-M3)")
+    pi.add_argument("--note", default="", help="note to attach to the chain entry")
+    pi.set_defaults(identity_command="init")
+    pi = sub_id.add_parser("show",
+                           help="print the current pseudonym + chain tip",
+                           parents=[common])
+    pi.set_defaults(identity_command="show")
+    pi = sub_id.add_parser("verify",
+                           help="walk the chain, verify each hash link",
+                           parents=[common])
+    pi.set_defaults(identity_command="verify")
+    pi = sub_id.add_parser("conflict",
+                           help="record a user↔AI disagreement (user_says/ai_understood/resolution)",
+                           parents=[common])
+    pi.add_argument("--user-says", required=True,
+                    help="the user's verbatim statement")
+    pi.add_argument("--ai-understood", required=True,
+                    help="how the AI interpreted it")
+    pi.add_argument("--resolution", required=True,
+                    help="which interpretation was used, and why")
+    pi.set_defaults(identity_command="conflict")
+    pi = sub_id.add_parser("restrictions",
+                           help="list the hard world-restrictions the system respects",
+                           parents=[common])
+    pi.set_defaults(identity_command="restrictions")
+    pi = sub_id.add_parser("set-seed",
+                           help="operator-supplied user_seed (chmod 0600)",
+                           parents=[common])
+    pi.add_argument("seed", help="the seed string to use for future pseudonyms")
+    pi.set_defaults(identity_command="set-seed")
+    p.set_defaults(func=_cmd_identity)
 
     # deploy (generate or check a deploy bundle)
     p = sub.add_parser("deploy", help="generate / verify a deploy bundle",
