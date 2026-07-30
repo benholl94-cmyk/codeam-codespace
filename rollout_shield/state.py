@@ -43,6 +43,60 @@ SCHEMA_VERSION = 1
 DEFAULT_STATE_ROOT = Path(os.environ.get("ROLLOUT_SHIELD_STATE", ".rollout-shield"))
 
 
+# Migration registry: MIGRATIONS[(from_version, to_version)] -> callable(dict) -> dict.
+# Each migration is a pure function that maps an old-version state dict to a
+# new-version state dict, preserving data semantics and never destructive.
+#
+# When bumping SCHEMA_VERSION, add a new migration here:
+#
+#     @register_migration(from_version=1, to_version=2)
+#     def _migrate_v1_to_v2(state: dict) -> dict:
+#         state.setdefault("new_field", default_value)
+#         state["schema_version"] = 2
+#         return state
+#
+# Migrations must be ordered: bump from SCHEMA_VERSION-1, then -2, etc.
+
+_MIGRATIONS: dict[tuple[int, int], "callable"] = {}
+
+
+def register_migration(from_version: int, to_version: int):
+    """Decorator: register a state-migration function for (from, to) version."""
+    def deco(fn):
+        _MIGRATIONS[(from_version, to_version)] = fn
+        return fn
+    return deco
+
+
+def migrate(state: dict, *, target: int = SCHEMA_VERSION) -> dict:
+    """Run any registered migrations until ``state`` reaches ``target`` version.
+
+    If a state has no ``schema_version`` (legacy data), treat it as v0 and
+    attempt to migrate forward. Unknown (legacy-without-migration) states are
+    left alone but a warning is emitted via the ``__migration_warnings__``
+    key on the returned state — callers can surface this without raising.
+    """
+    warnings = list(state.get("__migration_warnings__", []))
+    current = int(state.get("schema_version", 0))
+    if current > target:
+        warnings.append(
+            f"state at schema_version={current} is newer than target={target}; "
+            f"running an older binary against newer state may be unsafe"
+        )
+    while current < target:
+        step = _MIGRATIONS.get((current, current + 1))
+        if step is None:
+            warnings.append(
+                f"no migration registered for v{current} -> v{current + 1}; "
+                f"state left at v{current}"
+            )
+            break
+        state = step(state)
+        current = int(state.get("schema_version", current))
+    state["__migration_warnings__"] = warnings
+    return state
+
+
 class StateLockError(RuntimeError):
     """Raised when the state root cannot be locked for write.
 
@@ -196,10 +250,13 @@ class State:
 
     def load_config(self) -> dict:
         with open(self.config_path, encoding="utf-8") as fh:
-            return json.load(fh)
+            cfg = json.load(fh)
+        return migrate(cfg)
 
     def save_config(self, cfg: dict) -> None:
         cfg["schema_version"] = SCHEMA_VERSION
+        # drop transient migration warnings before persisting
+        cfg.pop("__migration_warnings__", None)
         atomic_write_json(self.config_path, cfg)
 
     # ---------- reputation ----------
@@ -208,10 +265,18 @@ class State:
         if not self.reputation_path.exists():
             return {"schema_version": SCHEMA_VERSION, "agents": {}}
         with open(self.reputation_path, encoding="utf-8") as fh:
-            return json.load(fh)
+            rep = json.load(fh)
+        migrated = migrate(rep)
+        if migrated is not rep:
+            # persist the migrated copy so subsequent loads are fast
+            migrated.pop("__migration_warnings__", None)
+            migrated["schema_version"] = SCHEMA_VERSION
+            atomic_write_json(self.reputation_path, migrated)
+        return migrated
 
     def save_reputation(self, rep: dict) -> None:
         rep["schema_version"] = SCHEMA_VERSION
+        rep.pop("__migration_warnings__", None)
         atomic_write_json(self.reputation_path, rep)
 
     def update_reputation(self, agent_id: str, delta: float, reason: str) -> None:

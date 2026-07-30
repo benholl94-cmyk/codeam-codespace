@@ -70,3 +70,42 @@ class TestStateRoundTrip(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMigration(unittest.TestCase):
+    """The migration chain runs when load_config / load_reputation discover
+    an older ``schema_version``."""
+
+    def test_legacy_no_schema_version_treated_as_v0(self):
+        from rollout_shield.state import migrate
+        # legacy state without schema_version → defaults to 0, no migration
+        # registered for v0→v1 so a warning should be emitted
+        result = migrate({}, target=1)
+        self.assertIn("__migration_warnings__", result)
+        self.assertTrue(any("v0" in w for w in result["__migration_warnings__"]))
+
+    def test_idempotent_for_current_version(self):
+        from rollout_shield.state import migrate, SCHEMA_VERSION
+        s = {"schema_version": SCHEMA_VERSION, "foo": "bar"}
+        out = migrate(s)
+        self.assertEqual(out.get("foo"), "bar")
+        self.assertEqual(out.get("schema_version"), SCHEMA_VERSION)
+
+    def test_registered_migration_runs(self):
+        from rollout_shield.state import migrate, _MIGRATIONS, register_migration
+        @register_migration(from_version=99, to_version=100)
+        def _bump(state):
+            state["schema_version"] = 100
+            state["tagged"] = True
+            return state
+        try:
+            out = migrate({"schema_version": 99}, target=100)
+            self.assertEqual(out["schema_version"], 100)
+            self.assertTrue(out["tagged"])
+        finally:
+            _MIGRATIONS.pop((99, 100), None)
+
+    def test_newer_state_warns(self):
+        from rollout_shield.state import migrate
+        out = migrate({"schema_version": 999}, target=1)
+        self.assertTrue(any("newer" in w for w in out["__migration_warnings__"]))
