@@ -62,43 +62,48 @@ done
 SAFE_OP="$(printf '%s' "$INTENT" | tr -cs '[:alnum:]-' '-' | tr '[:upper:]' '[:lower:]')"
 [[ -z "$SAFE_OP" ]] && SAFE_OP="autonomie"
 
-DRY_PREFIX=""
-$DRY_RUN && DRY_PREFIX="[dry-run] "
-
 log()  { printf '\n[autonomie] %s\n' "$*"; }
 pass() { printf '  [PASS] %s\n' "$*"; }
 fail() { printf '  [FAIL] %s\n' "$*" >&2; exit "$1"; }
 
+run_if_real() {
+    # run the supplied command unless DRY_RUN=1
+    if [[ "$DRY_RUN" -eq 1 ]]; then return 0; fi
+    "$@"
+}
+
 # ---------- preflight ----------
 log "0. preflight"
-$DRY_RUN || "$PREFLIGHT" || fail 1 "preflight gate failed"
+run_if_real "$PREFLIGHT" || fail 1 "preflight gate failed"
 pass "preflight clean"
 
 # ---------- 1. PLAN ----------
 log "1. PLAN — bd ready + scope"
-$DRY_RUN || {
-    if command -v bd >/dev/null 2>&1; then
-        bd ready 2>/dev/null || true
-        if [[ -n "$REQUEST" ]]; then
-            bd create --title="$SAFE_OP: $REQUEST" \
-                      --description="Autonomie chain task for: $REQUEST" \
-                      --type=task --priority=3 >/dev/null 2>&1 || true
-        fi
-    else
-        echo "  (bd absent; continuing standalone)"
+if [[ "$DRY_RUN" -ne 1 ]] && command -v bd >/dev/null 2>&1; then
+    bd ready 2>/dev/null || true
+    if [[ -n "$REQUEST" ]]; then
+        bd create --title="$SAFE_OP: $REQUEST" \
+                  --description="Autonomie chain task for: $REQUEST" \
+                  --type=task --priority=3 >/dev/null 2>&1 || true
     fi
-}
+else
+    echo "  (bd absent or dry-run; continuing standalone)"
+fi
 pass "plan complete (op=$SAFE_OP)"
 
 # ---------- 2. BUILD ----------
 log "2. BUILD — safeup snapshot $SAFE_OP"
-$DRY_RUN || python3 tools/safeup.py snapshot --op "$SAFE_OP" --keep "$KEEP" >/dev/null \
-    || fail 3 "safeup snapshot failed"
+if [[ "$DRY_RUN" -ne 1 ]]; then
+    python3 tools/safeup.py snapshot --op "$SAFE_OP" --keep "$KEEP" >/dev/null \
+        || fail 3 "safeup snapshot failed"
+fi
 
 if [[ -n "$CMD" ]]; then
     log "2b. BUILD — executing command under safeup preop"
-    $DRY_RUN || python3 tools/safeup.py preop --op "$SAFE_OP-cmd" --keep "$KEEP" -- $CMD \
-        || fail 3 "command under preop failed"
+    if [[ "$DRY_RUN" -ne 1 ]]; then
+        python3 tools/safeup.py preop --op "$SAFE_OP-cmd" --keep "$KEEP" -- $CMD \
+            || fail 3 "command under preop failed"
+    fi
 fi
 pass "build stage complete"
 
@@ -108,30 +113,31 @@ if [[ "$SKIP_TESTS" -eq 1 ]]; then
     pass "verify stage skipped"
 else
     log "3. VERIFY — tests + doctor + safeup"
-    $DRY_RUN || python3 tests/run_all.py >/dev/null || fail 4 "tests failed"
+    if [[ "$DRY_RUN" -ne 1 ]]; then
+        python3 tests/run_all.py >/dev/null || fail 4 "tests failed"
+        python3 tools/doctor.py >/dev/null 2>&1 || fail 4 "doctor reported fails"
+        python3 tools/safeup.py verify >/dev/null 2>&1 || fail 4 "safeup verify found corruption"
+    fi
     pass "tests pass"
-    $DRY_RUN || python3 tools/doctor.py >/dev/null 2>&1 || fail 4 "doctor reported fails"
     pass "doctor clean"
-    $DRY_RUN || python3 tools/safeup.py verify >/dev/null 2>&1 || fail 4 "safeup verify found corruption"
     pass "safeup verify clean"
 fi
 
 # ---------- 4. COMMIT ----------
 log "4. COMMIT — bd close + git add + commit"
-$DRY_RUN || {
+if [[ "$DRY_RUN" -ne 1 ]]; then
     if command -v bd >/dev/null 2>&1; then
-        # close any open tasks created in plan
+        # close any open tasks (best-effort, ignore failures)
         bd list --status=open --type=task 2>/dev/null \
             | grep -oE 'codeam_codespace_[a-z0-9]+-[a-z0-9]+' \
             | head -20 \
             | xargs -r bd close >/dev/null 2>&1 || true
     fi
-    # add safeup index and any tracked changes; do NOT auto-commit unless asked
     git add -A
     if ! git diff --cached --quiet; then
         git commit -m "autonomie($SAFE_OP): automated chain run
 
-        Co-Authored-By: Claude <noreply@anthropic.com>" \
+Co-Authored-By: Claude <noreply@anthropic.com>" \
             --no-verify >/dev/null 2>&1 || true
     fi
     if [[ "$PUSH" -eq 1 ]]; then
@@ -140,11 +146,13 @@ $DRY_RUN || {
     else
         pass "committed locally (push skipped — pass --push to enable)"
     fi
-}
+fi
 
 # ---------- 5. MONITOR ----------
 log "5. MONITOR — final health snapshot"
-$DRY_RUN || python3 tools/doctor.py >/dev/null 2>&1 || fail 6 "post-chain doctor fails"
+if [[ "$DRY_RUN" -ne 1 ]]; then
+    python3 tools/doctor.py >/dev/null 2>&1 || fail 6 "post-chain doctor fails"
+fi
 
 cat <<HANDOFF
 
