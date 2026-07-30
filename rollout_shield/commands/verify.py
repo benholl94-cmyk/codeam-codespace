@@ -52,25 +52,37 @@ def cmd_verify(state: State, args: argparse.Namespace) -> int:
             result = {"ok": True, "claim_id": target_id,
                       "agent_id": claim.get("agent_id"),
                       "key_id": sig_block.get("key_id")}
-            # reward honest signing — small, capped per claim
+            # reward honest signing — small, capped per claim.
+            # G3: pass actor so update_reputation's authentication check
+            # passes. The actor for verify is the operator invoking the
+            # CLI; we use the verify command's qualified name.
             try:
-                state.update_reputation(result["agent_id"], 0.01, "verify:ok")
+                state.update_reputation(
+                    result["agent_id"], 0.01, "verify:ok",
+                    actor=f"cli:verify",
+                )
             except Exception:
                 pass  # never let reputation write break verify
         except InvalidSignature:
             result = {"ok": False, "reason": "signature does not verify",
                       "claim_id": target_id, "agent_id": claim.get("agent_id")}
             try:
-                state.update_reputation(claim.get("agent_id") or "unknown",
-                                        -0.05, "verify:bad-signature")
+                state.update_reputation(
+                    claim.get("agent_id") or "unknown",
+                    -0.05, "verify:bad-signature",
+                    actor="cli:verify",
+                )
             except Exception:
                 pass
         except Exception as exc:
             result = {"ok": False, "reason": f"verify error: {exc}",
                       "claim_id": target_id, "agent_id": claim.get("agent_id")}
             try:
-                state.update_reputation(claim.get("agent_id") or "unknown",
-                                        -0.01, "verify:error")
+                state.update_reputation(
+                    claim.get("agent_id") or "unknown",
+                    -0.01, "verify:error",
+                    actor="cli:verify",
+                )
             except Exception:
                 pass
         break
